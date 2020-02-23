@@ -1,0 +1,1438 @@
+---
+title: "Rapport - Statistique bayesienne"
+btitle: ""
+author: "Philippe Real"
+date: '`r format(Sys.time(), " %d %B, %Y")`'
+abstract:
+keywords: "R"
+output:
+  html_document:
+    df_print: paged
+    toc: yes
+  word_document:
+    toc: yes
+  pdf_document:
+    toc: yes
+    toc_depth: 3
+    fig_caption: yes
+    keep_tex: yes
+    number_sections: true
+---
+
+```{r install.librairies, eval=FALSE, include=FALSE}
+# install.packages("evd")
+# install.packages("evir")
+# install.packages("ismev")
+# install.packages("fExtremes")
+# install.packages("extRemes")
+# install.packages("fitdistrplus")
+# install.packages("chron")
+# install.packages("lubridate")
+# library(forecast)
+# install.packages("fGarch")
+# install.packages("caschrono")
+# install.packages("FinTS")
+# install.packages("xts")
+# install.packages("zoo")
+# install.packages("tidyverse")
+# install.packages("dplyr")
+# install.packages("extRemes")
+
+install.packages("rstanarm")
+install.packages("bayesreg")
+install.packages("bayess")
+install.packages("dae")
+install.packages("BAS")
+install.packages("BMS")
+install.packages("corrplot")
+install.packages("mvtnorm")
+```
+
+
+```{r librairies, echo=FALSE, message=FALSE, warning=FALSE}
+rm(list=ls())
+library(stats)
+library(tidyverse)
+library(rstanarm)
+library(bayesreg)
+library(bayess)
+library(leaps)
+library(MASS)
+library(extRemes)
+library(dae)
+library(BAS)
+library(BMS)
+library(corrplot)
+library(mvtnorm)
+library(dplyr)
+#library(evd)
+#library(evir)
+#library(ismev)
+#library(fExtremes)
+#library(dyplr)
+```
+
+```{r echo=FALSE}
+
+#########################################################################
+#### Choix de Modèles => fonction légèrement corrigé du package Bayess
+####                     passage aux log10 pour corriger dépassement
+#########################################################################
+ModChoBayesReg2=function(y,X,g=length(y),betatilde=rep(0,dim(X)[2]),niter=100000,prt=TRUE)
+{
+X=as.matrix(X)
+n=length(y)
+p=dim(X)[2]
+
+for (i in 1:p)
+{
+  X[,i]=X[,i]-mean(X[,i])
+  X[,i]=X[,i]/sqrt(mean(X[,i]^2))
+}
+  
+if (det(t(X)%*%X)<=1e-7) stop("The design matrix has a rank lower than the number of explanatory variables!
+Calculations cannot be done and the process should be stopped!",call.=FALSE)
+alphaml=mean(y)
+intlike0=(t(y-alphaml)%*%(y-alphaml))^(-(n-1)/2)
+intlikelog0=-((n-1)/2)*log10(t(y-alphaml)%*%(y-alphaml))
+  
+if (p<=18)
+{
+  intlike=rep(0,2^p)
+  intlike[1]=intlike0
+  intlikelog=rep(0,2^p)
+  intlikelog[1]=intlikelog0
+  for (i in 2:2^p)
+  {
+    gam=as.integer(intToBits(i-1)[1:p]==1)
+    pgam=sum(gam)
+    Xgam=X[,which(gam==1)]
+    Ugam=solve(t(Xgam)%*%Xgam)%*%t(Xgam)
+    betatildegam=Ugam%*%X%*%betatilde
+    betamlgam=Ugam%*%y
+    s2gam=t(y-alphaml-Xgam%*%betamlgam)%*%(y-alphaml-Xgam%*%betamlgam)
+    kappagam=as.numeric(s2gam+t(betatildegam-betamlgam)%*%t(Xgam)%*%Xgam%*%(betatildegam-betamlgam)/(g+1))
+    intlike[i]=(g+1)^(-pgam/2)*kappagam^(-(n-1)/2)
+    intlikelog[i]=(-pgam/2)*log10(g+1)-((n-1)/2)*log10(kappagam)
+  }
+  
+  intlike=intlike/sum(intlike)
+  intlikeRes=intlikelog-sum(intlikelog)
+  intlikeRes2=intlikelog-prod(intlikelog)
+  
+  #modcho=order(intlike)[2^p:(2^p-9)]
+  #probtop10=intlike[modcho]
+  #modtop10=rep("",10)
+  
+  modcho=order(intlikelog)[2^p:(2^p-9)]
+  probtop10=intlikelog[modcho]
+  modtop10=rep("",10)
+  
+  for (i in 1:10)
+  {
+    modtop10[i]=paste(which(intToBits(modcho[i]-1)==1),collapse=" ")
+  }
+  
+  if (prt==TRUE)
+  {
+  cat("\n")
+  cat("Number of variables less than 18")
+  cat("\n")
+  cat("Model posterior probabilities are calculated exactly")
+  cat("\n")
+  cat("\n")
+  print(data.frame(Top10Models=modtop10,PostProb=round(probtop10,4)))
+  cat("\n")
+  cat("\n")
+  }
+  list(top10models=modtop10,postprobtop10=probtop10)
+}else{
+  gamma=rep(0,niter)
+  mcur=sample(c(0,1),p,replace=TRUE)
+  gamma[1]=sum(2^(0:(p-1))*mcur)+1
+  pcur=sum(mcur)
+  if (pcur==0) {
+    intlikecur=intlike0
+    intlikelogcur=intlikelog0
+  }
+  else
+  {
+  Xcur=X[,which(mcur==1)]
+  Ucur=solve(t(Xcur)%*%Xcur)%*%t(Xcur)
+  betatildecur=Ucur%*%X%*%betatilde
+  betamlcur=Ucur%*%y
+  s2cur=t(y-alphaml-Xcur%*%betamlcur)%*%(y-alphaml-Xcur%*%betamlcur)
+  kappacur=as.numeric(s2cur+t(betatildecur-betamlcur)%*%t(Xcur)%*%Xcur%*%(betatildecur-betamlcur)/(g+1))
+  intlikecur=(g+1)^(-pcur/2)*kappacur^(-(n-1)/2)
+  intlikelogcur=(-pcur/2)*log10(g+1)-((n-1)/2)*log10(kappacur)
+  }
+  for (i in 1:(niter-1))
+  {
+  mprop=mcur
+  j=sample(1:p,1)
+  mprop[j]=abs(mcur[j]-1)
+  pprop=sum(mprop)
+  if (pprop==0){
+    intlikeprop=intlike0 
+    intlikelogprop=intlikelog0 
+  }else
+  {
+  Xprop=X[,which(mprop==1)]
+  Uprop=solve(t(Xprop)%*%Xprop)%*%t(Xprop)
+  betatildeprop=Uprop%*%X%*%betatilde
+  betamlprop=Uprop%*%y
+  s2prop=t(y-alphaml-Xprop%*%betamlprop)%*%(y-alphaml-Xprop%*%betamlprop)
+  kappaprop=as.numeric(s2prop+t(betatildeprop-betamlprop)%*%t(Xprop)%*%Xprop%*%(betatildeprop-betamlprop)/(g+1)   )
+  intlikeprop=(g+1)^(-pprop/2)*kappaprop^(-(n-1)/2)
+  intlikelogprop=(-pprop/2)*log10(g+1)-((n-1)/2)*log10(kappaprop)
+  }
+  dlog=intlikelogprop-intlikelogcur
+  res0 = 10^dlog
+  if (runif(1)<=(res0))
+  #if (runif(1)<=(intlikeprop/intlikecur))
+  {
+  mcur=mprop
+  intlikecur=intlikeprop
+  intlikelogcur=intlikelogprop
+  }
+  gamma[i+1]=sum(2^(0:(p-1))*mcur)+1
+  }
+  gamma=gamma[20001:niter]
+  res=as.data.frame(table(as.factor(gamma)))
+  odo=order(res$Freq)[length(res$Freq):(length(res$Freq)+9)]
+  modcho=res$Var1[odo]
+  probtop10=res$Freq[odo]/(niter-20000)
+  modtop10=rep("",10)
+  for (i in 1:10)
+  {
+  modtop10[i]=paste(which(intToBits(as.integer(paste(modcho[i]))-1)==1),collapse=" ")
+  }
+  if (prt==TRUE)
+  {
+  cat("\n")
+  cat("Number of variables greather than 15")
+  cat("\n")
+  cat("Model posterior probabilities are estimated by using an MCMC algorithm")
+  cat("\n")
+  cat("\n")
+  print(data.frame(Top10Models=modtop10,PostProb=round(probtop10,4)))
+  cat("\n")
+  cat("\n")
+  }
+  list(top10models=modtop10,postprobtop10=probtop10)
+  }
+}
+```
+
+```{r echo=FALSE}
+
+#########################################################################
+#### Estim Bayes-G Prior => fonction légèrement corrigé du package Bayess
+####                          passage aux log10 pour corriger dépassement
+#########################################################################
+BayesReg2=function(y,X,g=length(y),betatilde=rep(0,dim(X)[2]),prt=TRUE)
+{
+
+X=as.matrix(X)
+n=length(y)
+p=dim(X)[2]
+for (i in 1:p)
+{
+X[,i]=X[,i]-mean(X[,i])
+X[,i]=X[,i]/sqrt(mean(X[,i]^2))
+}
+
+if (det(t(X)%*%X)<=1e-7) stop("The design matrix has a rank lower than the number of explanatory variables!
+Calculations cannot be done and the process should be stopped!",call.=FALSE)
+U=solve(t(X)%*%X)%*%t(X)
+alphaml=mean(y)
+betaml=U%*%y
+s2=t(y-alphaml-X%*%betaml)%*%(y-alphaml-X%*%betaml)
+kappa=as.numeric(s2+t(betatilde-betaml)%*%t(X)%*%X%*%(betatilde-betaml)/(g+1))
+malphabayes=alphaml
+mbetabayes=g/(g+1)*(betaml+betatilde/g)
+msigma2bayes=kappa/(n-3)
+valphabayes=kappa/(n*(n-3))
+vbetabayes=diag(kappa*g/((g+1)*(n-3))*solve(t(X)%*%X))
+vsigma2bayes=2*kappa^2/((n-3)*(n-4))
+postmean=c(malphabayes,mbetabayes)
+postsqrt=sqrt(c(valphabayes,vbetabayes))
+intlike=(g+1)^(-p/2)*kappa^(-(n-1)/2)
+intlikelog=-(p/2)*log10(g+1)-((n-1)/2)*log10(kappa)
+
+#intlike = -q/2*log(g+1) - n/2*log(t(y)%*%y - g/(g+1)*t(y)%*% X %*% solve(t(X)%*%X) %*%t(X)%*%y)
+
+bayesfactor=rep(0,p)
+
+if (p>=2)
+{
+for (i in 1:p)
+{
+p0=p-1
+X0=X[,-i]
+U0=solve(t(X0)%*%X0)%*%t(X0)
+betatilde0=U0%*%X%*%betatilde
+betaml0=U0%*%y
+s20=t(y-alphaml-X0%*%betaml0)%*%(y-alphaml-X0%*%betaml0)
+kappa0=as.numeric(s20+t(betatilde0-betaml0)%*%t(X0)%*%X0%*%(betatilde0-betaml0)/(g+1))
+intlike0=(g+1)^(-p0/2)*kappa0^(-(n-1)/2)
+#intlike0 = -q/2*log(g+1) - n/2*log(t(y)%*%y - g/(g+1)*t(y)%*% X0 %*% solve(t(X0)%*%X0) %*%t(X0)%*%y)
+intlike0log=-(p0/2)*log10(g+1)-((n-1)/2)*log10(kappa0)
+
+#bayesfactor[i]=intlike/intlike0
+bayesfactor[i]=intlikelog-intlike0log
+
+}
+}
+if (p==1)
+{
+intlike0=(t(y-alphaml)%*%(y-alphaml))^(-(n-1)/2)
+intlike0log=log((t(y-alphaml)%*%(y-alphaml))^(-(n-1)/2))
+
+#bayesfactor=intlike/intlike0
+bayesfactor=intlikelog-intlike0log
+
+}
+
+
+evid=rep("    ",p+1)
+for (i in 1:p)
+{
+if (bayesfactor[i]<0) evid[i+1]="      "
+if (0<=bayesfactor[i] & bayesfactor[i]<=0.5) evid[i+1]="   (*)"
+if (0.5<bayesfactor[i] & bayesfactor[i]<=1) evid[i+1]="  (**)"
+if (1<bayesfactor[i] & bayesfactor[i]<=2) evid[i+1]=" (***)"
+if (bayesfactor[i]>2) evid[i+1]="(****)"
+}
+
+if (prt==TRUE)
+{
+vnames="Intercept"
+for (i in 1:p) vnames=c(vnames,paste("x",i,sep=""))
+cat("\n")
+print(data.frame(PostMean=round(postmean,4),PostStError=round(postsqrt,4),
+Log10bf=c("",round(bayesfactor,4)),EvidAgaH0=evid,row.names=vnames))
+cat("\n")
+cat("\n")
+cat(paste("Posterior Mean of ","Sigma2",":"," ",round(msigma2bayes,4),sep=""))
+cat("\n")
+cat(paste("Posterior StError of ","Sigma2",":"," ",round(sqrt(vsigma2bayes),4),sep=""))
+cat("\n")
+cat("\n")
+}
+list(postmeancoeff=postmean,postsqrtcoeff=postsqrt,log10bf=bayesfactor,postmeansigma2=msigma2bayes,
+postvarsigma2=vsigma2bayes)
+}
+
+```
+
+
+```{r echo=FALSE}
+###########################################
+## fonction TP4 => calcul des bayes factors
+###########################################
+CalcBayesFactor=function(y,X,g=length(y))
+{
+n = dim(X)[1]
+p = dim(X)[2]
+q = 1
+#g = n
+
+#X0 = X[,-(7:8)]
+bfactor=rep(0,p)
+
+for(i in 1:p)
+{
+  X0 = X[,-i]
+  BF = (g+1)^(q/2) * 
+    ((t(y)%*%y - g/(g+1) * t(y)%*%X0 %*% solve(t(X0)%*%X0) %*% t(X0)%*%y)/
+    (t(y)%*%y - g/(g+1) * t(y)%*%X %*% solve(t(X)%*%X) %*% t(X)%*%y))^(n/2)
+  bfactor[i]=round(log10(BF),4)
+}
+
+bayesfactor<-cbind.data.frame(colnames(X),bfactor)
+bayesfactor<-bayesfactor[order(-bayesfactor$bfactor),]
+return (bayesfactor)
+}
+
+########################################################
+## fonction TP4 =>log-vraisemblance marginale - Zellner
+########################################################
+## fonction pour calculer la log-vraisemblance marginale
+marglkd = function(gamma, X, y, g=length(y)){
+  q=sum(gamma)
+  X = cbind(1, X) # on ajoute une colonne de 1 pour beta_0
+  X1=X[ ,c(T,gamma)]
+  if(q==0){return( -n/2 * log(t(y)%*%y))}
+  m = -q/2*log(g+1) -
+    n/2*log(t(y)%*%y - g/(g+1)* t(y)%*% X1 %*%
+              solve(t(X1)%*%X1) %*%t(X1)%*%y)
+return(m)
+}
+
+##############################################
+## fonction TP4 => Gibbs Sampler cadre-Zellner
+##############################################
+##Gibbs
+Gibbs = function (y,X,g=length(y),niter = 1e4)
+{
+  nbCol = dim(X)[2]
+  nbCol1 = nbCol-1
+  
+  #niter = 1e4 # nombre d'itérations
+  gamma = matrix(F, nrow = niter, ncol = nbCol)
+  gamma0 = sample(c(T, F), size = nbCol, replace = TRUE) # aleur initiale aléatoire
+  
+  lkd = rep(0, niter)
+  modelnumber = rep(0, niter)
+  
+  oldgamma = gamma0
+  for(i in 1:niter){
+    newgamma = oldgamma
+    for(j in 1:nbCol){
+      g1 = newgamma; g1[j]=TRUE
+      g2 = newgamma; g2[j]=FALSE
+      ml1 = marglkd(g1, X, y)
+      ml2 = marglkd(g2, X, y)
+      p = c(ml1,ml2)-min(ml1,ml2)
+      # On souhaite tirer depuis une Bernoulli, avec probabilité de tirer TRUE égale à exp(p[1])/(exp(p[1])+exp(p[2])).
+      # C'est ce que fait la ligne suivante. Notons que la fonction sample() calcule la constante de normalisation.
+      newgamma[j] = sample(c(T,F), size=1, prob=exp(p)) 
+    }
+    gamma[i,] = newgamma
+    lkd[i] = marglkd(newgamma, X ,y)
+    modelnumber[i] = sum(newgamma*2^(0:nbCol1))
+    oldgamma = newgamma
+  }
+  
+  gamma.res<-cbind.data.frame(X=colnames(X),gamma.mean=colMeans(gamma))
+  gamma.res<-gamma.res[order(-gamma.res$gamma.mean),]
+  return (gamma)
+}
+```
+
+```{r echo=FALSE}
+blm <- "
+data {
+int<lower=0> n; // number cases
+int<lower=0> p; // number of regressors
+matrix[n, p] X; // model matrix
+vector[n] y; // response vector
+}
+parameters {
+vector[p] beta; // regression coefficients
+real<lower=0> sigma; // residual std. dev.
+}
+transformed parameters {
+vector[n] mu = X*beta; // expectation of y
+}
+model {
+y ~ normal(mu, sigma); // likelihood
+}
+"
+bayeslm <- function(formula, data, subset, na.action, contrasts=NULL, ...){
+if (!require(rstan)) stop ("rstan package not available")
+cl <- match.call()
+mf <- match.call(expand.dots = FALSE)
+m <- match(c("formula", "data", "subset", "na.action"),
+names(mf), 0L)
+mf <- mf[c(1L, m)]
+mf$drop.unused.levels <- TRUE
+mf[[1L]] <- quote(stats::model.frame)
+mf <- eval(mf, parent.frame())
+mt <- attr(mf, "terms")
+y <- model.response(mf, "numeric")
+X <- model.matrix(mt, mf, contrasts)
+n <- length(y)
+p <- ncol(X)
+Data <- list(n=n, X=X, y=y, p=p)
+stan(model_code=blm, model_name="Linear Model", data=Data, ...)
+}
+```
+
+```{r echo=FALSE}
+####
+#### Livre : A First Course in Bayesian Statistical Methods - Peter Hoff
+###  R-code to generate multiple independent Monte Carlo samples from the posterior distribution
+
+RegBayes.Hoff = function (y,X,g=length(y),nu0=1,s20=summary(lm(y~−1+X))$sigma^2, niter = 1e4) 
+{
+  nu0<−1  
+  #s20 <− summary(lm(y~−1+X))$sigma^2 #8.54
+  s20<-100
+  S<−niter
+  
+  X=as.matrix(X)
+  n=length(y)
+  p=dim(X)[2]
+  for (i in 1:p)
+  {
+  X[,i]=X[,i]-mean(X[,i])
+  X[,i]=X[,i]/sqrt(mean(X[,i]^2))
+  }
+
+  ## data : y , X
+  ## prior parameter s : g ,nu0, s20
+  ## number of independent samples to generate : S
+  
+  n<−dim(X)[1] 
+  p<−dim(X)[2]
+  Hg<−(g/(g+1))*X%*%solve(t(X)%*%X)%*%t(X)
+  #Hg<−(g/(g+1))*solve(t(X)%*%X)%*%t(X)%*%Y
+  SSRg<−t(y)%*%(diag(1,nrow=n)−Hg)%*%y
+  s2<−1/rgamma(S,(nu0+n)/2,(nu0*s20+SSRg)/2)
+  Vb<− g*solve (t (X)%*%X)/(g+1)
+  Eb<− Vb%*%t(X)%*%y
+  E<−matrix(rnorm(S*p,0,sqrt(s2)),S,p)
+  beta<−t(t(E%*%chol(Vb))+c(Eb))
+  #sumBeta<-summary(beta)
+  #betaMean<-colMeans(beta)
+  #betaMean<-as.data.frame(betaMean)
+  return(beta)
+}
+```
+
+
+```{r echo=FALSE}
+#### Livre : A First Course in Bayesian Statistical Methods - Peter Hoff
+##### a function to compute the marginal probability
+lpy.X<−function (y ,X, g=length(y) ,nu0=1, s20=try(summary(lm(y~−1+X))$sigma^2 ,silent=TRUE) )
+{
+  n<−dim(X) [ 1 ] ; p<−dim(X) [2]
+  if (p==0) { Hg<−0 ; s20<−mean(y^2) }
+  if (p>0) { Hg<−(g/( g+1)) * X%*%solve(t(X)%*%X)%*%t(X)}
+  SSRg<− t(y)%*%( diag (1,nrow=n) − Hg)%*%y
+  res<-−.5*(n*log(pi)+p*log(1+g)+(nu0+n)*log(nu0*s20+SSRg)−nu0*log( nu0*s20))+
+  lgamma((nu0+n)/2)−lgamma(nu0/2)
+  return(res)
+}
+
+#### Livre : A First Course in Bayesian Statistical Methods - Peter Hoff
+#### Gibbs sampler
+Gibbs.Hoff = function (y,X,g=length(y),niter = 1e4)
+{
+  ##### starting values and MCMC setup
+  z<−rep (1 ,dim(X)[2])
+  lpy.c<−lpy.X(y ,X[,z==1,drop=FALSE])
+  #lpy.c<−lpy.X(y ,X[,z==1,drop=FALSE], g=length(y) ,nu0=1, s20=)
+  
+  S<−niter
+  Z<−matrix(NA,S,dim(X)[2])
+
+  ##### Gibbs sampler
+  for (s in 1:S)
+  {
+    for (j in sample (1:dim(X)[2]))
+    {
+      zp<−z ; zp [j]<−1−zp [j]
+      lpy.p<−lpy.X(y ,X[ ,zp==1,drop=FALSE] )
+        
+      r<− (lpy.p − lpy.c)*(−1)^(zp[j]==0)
+      z [j]<−rbinom(1 ,1 ,1/(1+exp(−r ) ) )
+        
+      if(z[j]==zp[j]) {lpy.c<−lpy.p}
+    }
+    Z[s,]<−z
+  }
+  
+  #return colmean(Z)
+  return (Z)
+}
+```
+
+```{r librairies, echo=FALSE, message=FALSE, warning=FALSE}
+renameCol<-function(data)
+{
+ data <- data %>% rename(Prs_l =  effectif_presents_serie_l)   
+ data <- data %>% rename(Prs_es=  effectif_presents_serie_es)       
+ data <- data %>% rename(Prs_s =  effectif_presents_serie_s)          
+
+ data <- data %>% rename(Eff_2nd = effectif_de_seconde)        
+ data <- data %>% rename(Eff_1er = effectif_de_premiere)
+ 
+ data <- data %>% rename(Suc.brt_l = taux_brut_de_reussite_serie_l  )
+ data <- data %>% rename(Suc.brt_es= taux_brut_de_reussite_serie_es )
+ data <- data %>% rename(Suc.brt_s = taux_brut_de_reussite_serie_s  )
+
+ data <- data %>% rename(Suc.att_l = taux_reussite_attendu_serie_l)     
+ data <- data %>% rename(Suc.att_es= taux_reussite_attendu_serie_es)        
+ data <- data %>% rename(Suc.att_s = taux_reussite_attendu_serie_s) 
+
+ data <- data %>% rename(Acc.brt_bac.2 = taux_acces_brut_seconde_bac  )     
+ data <- data %>% rename(Acc.brt_bac.1 = taux_acces_brut_premiere_bac )
+                         
+ data <- data %>% rename(Acc.att_bac.1 = taux_acces_attendu_premiere_bac)
+ data <- data %>% rename(Acc.att_bac.2 = taux_acces_attendu_seconde_bac)
+                         
+ data <- data %>% rename(Suc.brt_Tot =  taux_brut_de_reussite_total_series)
+ data <- data %>% rename(Suc.att_Tot =  taux_reussite_attendu_total_series)
+}
+
+density.plot=function(x,position="topleft",legende=FALSE,...)
+{
+ H<-hist(x,sub=NULL,ylab="densité",freq=FALSE, ...)
+ abline(v=0,lwd=2)
+ rug(x,ticksize=0.01)
+ xmin=par()$usr[1];xmax=par()$usr[2]
+ tab<-seq(xmin,xmax,0.002)
+ lines(tab,dnorm(tab,mean(x),sd(x)),col="red",lty=2,lwd=2)
+ lines(density(x),lwd=2,col="orange")
+ if(legende)
+ lg0=c("estimation n.p. de la densité","estimation d'une gaussienne")
+ legend(position,legend=,lg0,lty=c(1,2),lwd=2, col=c("orange","red"),cex=0.9) 
+}
+```
+
+
+## test des fonctions
+```{r echo=FALSE}
+BayesReg2(y,X,g=length(y))
+ModChoBayesReg2(y,X,g=length(y))
+
+bayesfactor = CalcBayesFactor(y,X,g=length(y))
+gamma.res = Gibbs(y,X,g=length(y),niter = 1e4)
+
+
+beta.reg = RegBayes.Hoff(y,X,nu0=1,s20=summary(lm(y~−1+X))$sigma^2, niter = 1e4) 
+sumBeta<-summary(beta.reg)
+betaMean.reg<-colMeans(beta.reg)
+betaMean<-as.data.frame(betaMean)
+
+test<-cbind(y,beta.reg)
+l<-lm(y~ .,data=as.data.frame(test))
+summary(l)
+
+
+Z= Gibbs.Hoff(y,X,g=length(y),niter = 1e4)
+colmean(Z)
+
+  n<−dim(beta.reg)[1] 
+
+```
+
+```{r echo=FALSE}
+betaMean
+bayesfactor
+gamma.res
+
+```
+
+
+
+\pagebreak
+
+# Introduction
+
+## Lecture des données - description statistique
+
+```{r echo=FALSE, fig.height=5, fig.width=15, message=FALSE, warning=FALSE}
+dataMutations_d <-read.table("mutations.csv", sep=",", dec=".",header=T, na.strings = "null")
+#dataMutations_d<- mutate(dataMutations_d, dept = as.factor( substr(as.character(commune),1,2)))
+```
+
+* Rennomage des colonnes
+
+ Nouveau Nom  |             Ancien Nom
+--------------|-------------------------------------
+Prs_l         | effectif_presents_serie_l 
+prs_es        | effectif_presents_serie_es    
+Prs_s         | effectif_presents_serie_s        
+Eff_2nd       | effectif_de_seconde       
+Eff_1er       | effectif_de_premiere
+Suc.brt_l     | taux_brut_de_reussite_serie_l
+Suc.brt_es    | taux_brut_de_reussite_serie_es
+Suc.brt_s     | taux_brut_de_reussite_serie_s
+Suc.att_l     | taux_reussite_attendu_serie_l     
+Suc.att_es    | taux_reussite_attendu_serie_es        
+Suc.att_s     | taux_reussite_attendu_serie_s
+Acc.brt_bac.2 | taux_acces_brut_seconde_bac       
+Acc.brt_bac.1 | taux_acces_brut_premiere_bac 
+Acc.att_bac.1 | taux_acces_attendu_premiere_bac)
+Acc.att_bac.2 | taux_acces_attendu_seconde_bac)
+Suc.brt_Tot   | taux_brut_de_reussite_total_series)
+Suc.att_Tot   | taux_reussite_attendu_total_series)
+
+
+```{r echo=FALSE}
+dataMut<-renameCol(dataMutations_d)
+summary(dataMut)
+```
+
+```{r echo=FALSE}
+data.mutations<-dataMut[,-c(1:5)]
+
+cols.mut<-as.data.frame(length(colnames(data.mutations)),colnames(data.mutations))
+colnames(data.mutations)[[1]]
+head(data.mutations)
+
+df1<-data.frame(X=colnames(data.mutations)) 
+colDef<-data.frame(X=colnames(data.mutations),Index=as.numeric(rownames((df1))))
+colDef[,2]=df[,2]-1
+```
+
+
+* Corrélations 2 à 2 entre les variables
+
+```{r echo=FALSE, fig.width=15}
+datamat=data.matrix(datam)
+mcor<-cor(datamat)
+corrplot(mcor, type="upper", order="hclust", tl.col="black", tl.srt=45)
+```
+
+On a de fortes corrélations entre les groupes de variables. 
+Effectifs (Eff_2nd/Eff_1e) et Effectifs présents (Prs_l/Prs_es/Prs_s)
+Succés brute (Suc.brt_l/Suc.brt_es/Suc.brt_s) et Succés Attentus (Suc.att_l/Suc.att_es/Suc.att_s)
+On remarque que le taux de réussite brute série L $Suc.brt_l$ est moins corrélés aux autres varuiables, et semble avoir une certaine indépendance.
+
+La variable $Acc.brt_bac.2$ est très corrélé avec la variable $Acc.att_bac.2$ et de même pour $Acc.brt_bac.1$ et $Acc.att_bac.1$
+On pourrait ne considérer que les variables Accès brute.
+
+les covariables $Suc.brt_Tot$ et $Suc.att_Tot$ sont évidemment fortement corrélés avec les groupes Réussites et Réussites attendus.
+
+La variable a expliquer $Barre$ n'est pas corrélés avec les caractéristiques de l'établissement.
+
+On pourrait imaginer, de ne considérer que les variables covaraiables :
+Effectifs présents: Prs_l/Prs_es/Prs_s
+Succés brute: Suc.brt_l/Suc.brt_es/Suc.brt_s on garderait aussi Suc.att_l
+Accès brute: Acc.brt_bac.2/Acc.brt_bac.1
+
+15 
+13			
+16			
+8				
+9				
+17			
+7 15		
+12			
+14			
+6
+
+15	taux_acces_attendu_premiere_bac	0.3369		
+13	taux_acces_attendu_seconde_bac	0.1957		
+7	taux_reussite_attendu_serie_l	0.1224		
+17	taux_reussite_attendu_total_series	0.1200		
+8	taux_reussite_attendu_serie_es	0.1183		
+16	taux_brut_de_reussite_total_series	0.1161		
+9	taux_reussite_attendu_serie_s	0.1025		
+12	taux_acces_brut_seconde_bac	0.0898		
+5	taux_brut_de_reussite_serie_es	0.0821		
+6	taux_brut_de_reussite_serie_s	0.0776	
+
+
+Prs_l	        1			
+Prs_es	      2			
+Prs_s	        3			
+Suc.brt_l	    4 			
+Suc.brt_es	  5
+Eff_2nd	      10			
+Eff_1er	      11
+
+Suc.brt_s	    6	 *
+Suc.att_l	    7	 *
+Suc.att_es	  8	 *	
+Suc.att_s	    9	 *
+Acc.brt_bac.2	12 *			
+Acc.att_bac.2	13 *			
+Acc.brt_bac.1	14 *			
+Acc.att_bac.1	15 *			
+Suc.brt_Tot	16	 *		
+Suc.att_Tot	17	 *
+
+			
+Acc.att_bac.1	15 
+Acc.brt_bac.2	12			
+Acc.att_bac.2	13			
+Acc.brt_bac.1	14
+Suc.att_Tot	  17	 
+
+```{r echo=FALSE}
+datam2<-dataMut[,-c(1:5)]
+#datam2 <- as_tibble(dataMut[,-c(1:5)])
+#datam2 %>% select(Prs_l,Prs_es,Prs_s,Suc.brt_l,Suc.brt_es,Suc.brt_s,Suc.att_l,Acc.brt_bac.2,Acc.brt_bac.1)
+
+datam2<-subset(datam2, select=c("Barre","Prs_l","Prs_es","Prs_s","Suc.brt_l","Suc.brt_es","Suc.brt_s","Suc.att_l","Acc.brt_bac.2","Acc.brt_bac.1"))
+
+head(datam2)
+
+datamat2=data.matrix(datam2)
+mcor2<-cor(datamat2)
+corrplot(mcor2, type="upper", order="hclust", tl.col="black", tl.srt=45)
+
+```
+
+Le résultat n'est pas très convaincant, il semble difficile de supprimer des variables.
+
+# Régression linéaire
+
+On cherche à expliquer le nombre de points nécessaire à une mutation (colonne Barre) par les caractéristiques du lycée.
+On considère un modéle de régression linéaire gaussien, que l'on rappelle ici. 
+
+## Rappels définitions et notations 
+
+### Modèle linéaire Gaussien 
+
+Le modèle linéaire, tente d'expliquer les observations (input) $(y_i)$ par des covariables $(x_1,...,x_p)$ à partir du modèle suivant :
+
+$y_i = \beta_0+\beta_1x_{i1}+...+\beta_px_{ip} + \epsilon_i$ où $\epsilon_i \sim N(0,\sigma^2)$ et iid.
+
+On note $y=(y_1,..,y_n)$ le vecteur des observations et $X= (x_{ik})_{1\leq i \leq n,1\leq k \leq p}$ la matrice des covaraiables ou de design (predictor).
+
+La réponse pour l'individus $y_i$ est donnée par (variable Barre dans notre exemple).
+
+En notation matricielles le modèle se réécrit de la manière suivante: 
+
+$y \mid \alpha,\beta, \sigma^2 \sim N_n(\alpha \mathbb{1_n} + X\beta,\sigma^2 I_n) $
+où $N_n$ est la distribution de la loi normale en dimension n.
+
+Ainsi les  $y_i$  suivent des lois normales indépendantes avec :
+$E(y_i \mid \alpha,\beta, \sigma^2 ) = \alpha + \sum_{j=1}^p \beta_jx_{ij}$
+$V(y_i \mid \alpha,\beta, \sigma^2) = \sigma^2$
+
+### Contexte bayésien
+
+On rappelle ici la formulation de la régression linaire dans le contexte bayésien.
+
+On se place dans le cadre d'une expérience statistique paramétrique, où le vecteur des observations $Y=(y_1,...,y_n)$ est iid et les $y_i \sim P_{\theta}$ une loi de paramètre $\theta$.
+
+Dans le contexte bayésien, on suppose que le paramètre inconnu $\theta$ est une v.a dont la loi de probabilité représente notre incertitude sur les valeurs possibles.
+
+* Loi à priori $\pi(\theta)$
+
+Cette loi du paramètre $\theta$ est la loi à priori, notée: $\pi(\theta)$. 
+Elle représente "l'appriori" ou la croyance du statisticien avant le début de l'expérience. 
+Sont choix est important, et on doit la choisir demanière à obtenir : une loi conjuguée pour faciliter les calculs, ou bien non informative (à priori de Jeffreys), fournit par un expert... 
+
+* Loi à postériori $\pi(\theta,y)$
+
+On appelle la loi à postériori de $\theta$ sachant $y_1,y_2,...,y_n$ la loi de distribution
+$\pi(\theta\mid Y) \propto \pi(\theta)L(\theta \mid Y)$
+
+Cette définition découle de la formule de Bayes:
+
+$\pi(\theta \mid y)  = \frac{\pi(\theta) f_{Y\mid \theta}(y\mid \theta)}{f_Y(y)}$ 
+
+On retrouve l'équivalence des écritures avec $f_{Y\mid \theta}(y\mid \theta) = L(\theta \mid Y)$
+Et ${f_Y(y)}$ ne dépend pas du paramètre $\theta$, c'est une constante de normalisation qui est unique et que l'on peut retrouver une fois la loi à postériori déterminer analytiquement, qui doit s'intégrer à 1.  
+
+### Régression linaire Bayésienne - Inférence bayésienne à l'aide de la loi a priori g de Zellner
+
+On reprend les hypothèses et le contexte de définition du modèle linéaire gaussien, que l'on réinterprète avec l'approche Bayésienne. 
+On considère la loi à priori $\pi(\theta)$ définit à partir des deux lois suivantes :
+
+$\beta \mid \sigma^2,X \sim N_{k+1}(\tilde{\beta},\sigma^2M^{-1}) $
+$\sigma^2 \mid X \sim IG(a,b)$
+
+En fixant la matrice M de la manière suivante, on obtient la g-prior ou loi informative de Zellner :
+$\beta \mid \sigma^2,X \sim N_{k+1}(\tilde{\beta},g\sigma^2(^tXX)^{-1}) $
+$\sigma^2 \sim \pi(\sigma^2 \mid X) \propto \sigma^{-2}$
+
+Il reste à choisir le paramètre g, souvent g=1 ou g=n en fonction du poids que l'on veut accorder à la prior.
+Si g=2 celà revient à donner à la prior le même poids que 50% de l'échantilon.
+Avec g=n on donne à la loi à priori le même poids que 1-observation.
+
+Pour l'espérance à priori $\tilde{\beta}$ ou pourra la prendre = 0 si l'on n'a pas d'information à priori.
+
+La loi à priori $\pi(\theta)$ se déduit simplement à partir des deux lois précédentes:
+ $\pi(\theta) = \pi(\beta,\sigma^2 \mid X) = \pi(\beta \mid \sigma^2,X)\pi(\sigma^2 \mid X)$ 
+
+Cette loi à la propriété remarquable d'être une loi conjugué et sa loi à postériori associée a l'expression analytique suivnate:
+$\beta \mid \sigma^2,y,X \sim N_{k+1}(\frac{g}{g+1}\hat{\beta},\frac{\sigma^2g}{g+1}(^tXX)^{-1}) $
+$\sigma^2 \mid y,X \sim IG(\frac{n}{2} \hat{\beta}, \frac{s^2}{2} + \frac{1}{2(g+1)}(^t\hat{\beta} {^tX}X\hat{\beta})$
+
+donc : $\beta \mid y,X \sim Student_{k+1}(n,\frac{g}{g+1}\hat{\beta},\frac{g(s^2 + (^t\hat{\beta} {^tX}X\hat{\beta})/(g+1) )}{n(g+1)} (^tXX)^{-1}) $
+
+## Résultats et interprétation des coéfficients
+
+Pour estimer les $\beta$ à postériori, on va utiliser la fonction (modifiée) BayesReg du package Bayess issue du livre de Marin et Robert : Bayesian Essentials with R.
+On comparera le résultat obtenu avec le résultat renvoyé par la fonction du livre de P. Hoff: A First Course in Bayesian Statistical Methods.
+ 
+* Bayes Regression 1 : $Fonction BayesReg$ 
+
+```{r echo=FALSE}
+X<-as.matrix(data.mutations[,-1])
+y<-data.mutations[1]
+y <- dataMutations_d[, 6]
+#X = as.matrix(dataMutations_d[, 7:23])
+BayesReg2(y,X,g=length(y))
+```
+
+Les Log10 bayes factors sont tous négatifs, aucunes des variables ne se dégage.
+
+### Autres méthodes et packages
+
+* Bayes Regression 2
+
+
+```{r echo=FALSE}
+reg.f = lm(y~X)
+betahat = reg.f$coefficients
+residuals = reg.f$residuals
+s2 = t(residuals)%*%residuals
+#X = cbind(1, X) # on ajoute une colonne de 1 pour beta_0
+```
+
+```{r echo=FALSE}
+beta = RegBayes.Hoff(y,X,nu0=1,s20=summary(lm(y~−1+X))$sigma^2, niter = 1e4) 
+sumBeta<-summary(beta)
+betaMean<-colMeans(beta)
+betaMean<-as.data.frame(betaMean)
+```
+
+```{r echo=FALSE}
+betaMean
+```
+
+
+
+
+
+On trouve des résultats relativement proches avec la fonction zlm
+
+```{r echo=FALSE}
+foo2 = zlm(Barre ~ ., data=data.mutations)
+summary(foo2)
+```
+
+
+```{r include=FALSE}
+model <- stan_glm(Barre ~ ., family = gaussian(),prior = normal(),data=data.mutations)
+```
+
+```{r echo=FALSE}
+summary(model)
+model$coefficients
+```
+
+```{r eval=FALSE, include=FALSE}
+fit.bayeslm <- bayeslm(Barre ~ ., data=data.mutations, seed=300732, iter=5000) #iter=10000
+print(fit.bayeslm, pars=c("beta", "sigma"), digits=4)
+```
+
+## Choix des covariables et comparaison au résultat obtenu par une analyse fréquentiste.
+
+Choisir les covariables significatives. 
+Comparer au résultat obtenu par une analyse fréquentiste.
+Afin de réduire le coût computationnel, il peut être intéressant d'éffectuer une présélection des covariables considérées.
+
+### Choix des covariables
+
+Bayes Factors et comparaison de modèles
+Pour comparer les modèles on peut utiliser les facteurs de Bayes
+
+* Test d'hypothèse $H_0: \beta_i=0  i$  
+
+On test l'hypothèse $H_0$, $\forall i=1,...,17$ et on calcul le Bayes Factor à partir de la formule du cours (TP4) 
+
+```{r echo=FALSE}
+bayesfactor = CalcBayesFactor(y,X,g=length(y))
+bayesfactor
+```
+
+
+```{r echo=FALSE}
+BayesReg2(y,X,g=length(y))
+```
+
+
+```{r echo=FALSE}
+
+```
+
+```{r echo=FALSE}
+
+```
+
+
+
+* Choix de modèle : calcul exact
+
+A partir de la méthoide vue en TP
+
+```{r echo=FALSE}
+# calculons la log-vraisemblance marginale des 8 modÃ¨les
+X_restreint = cbind(X[,"Suc.att_l"],X[,"Acc.brt_bac.2"],X[,"Acc.brt_bac.1"],X[,"Acc.att_bac.1"])
+#X[,1:4]
+logprob3 = c(
+marglkd(c(F,F,F), X_restreint, y),
+marglkd(c(F,F,T), X_restreint, y),
+marglkd(c(F,T,F), X_restreint, y),
+marglkd(c(F,T,T), X_restreint, y),
+marglkd(c(T,F,F), X_restreint, y),
+marglkd(c(T,F,T), X_restreint, y),
+marglkd(c(T,T,F), X_restreint, y),
+marglkd(c(T,T,T), X_restreint, y))
+
+# on peut ajouter une constante, qui évitera les erreurs numéiques
+logprob3 = logprob3-max(logprob3)
+# les probabilités des modèles sont donc
+prob3 = exp(logprob3)/sum(exp(logprob3))
+round(prob3, 3)
+```
+c'est le modèle ( T,F, F) qui est de loin le plus probable a posteriori
+le modèle avec la covariable: taux_reussite_attendu_serie_l (Suc.att_l)
+
+A partir de la fonction (modifée) - ModChoBayesReg du package Bayess
+
+```{r echo=FALSE}
+ModChoBayesReg2(y,X,g=length(y))
+```
+
+* Choix de modèle par échantillonnage de Gibbs
+
+Avec la fonction utilsée en TP
+
+```{r echo=FALSE}
+gamma = Gibbs(y,X,g=length(y),niter = 1e4)
+```
+[1] 0.1927 0.2517 0.5165 0.1815 0.2063 0.2628 0.4438 0.4137
+
+```{r echo=FALSE}
+gamma.res<-cbind.data.frame(X=colnames(X),gamma.mean=colMeans(gamma))
+gamma.res<-gamma.res[order(-gamma.res$gamma.mean),]
+gamma.res
+```
+
+On regarde la convergence de la méthode :
+
+```{r echo=FALSE, fig.height=12, fig.width=15}
+# Vérifions le mélange de la chaine de Markov à l'aide des autocorrélations.
+par(mfrow=c(6,3))
+for(i in 1:17) acf(as.numeric(gamma[,i]))
+# Autocorrélation décroit rapidement. Pas besoin de sous-échantillonner.
+
+```
+
+
+
+```{r echo=FALSE}
+
+
+```
+
+
+* Vérifions la convergence + le mélange à l'aide de la trace (on utilise une moyenne glissante puisque les valeurs sont binaires).
+
+```{r echo=FALSE, fig.width=15}
+
+library(zoo)
+
+nbCol = dim(X)[2]
+p<-nbCol
+
+par(mfrow=c(4,4))
+for(i in 2:15) plot(rollapply(gamma[,i], width=50, FUN=mean), type="l")
+
+plot(rollapply(gamma[,16], width=50, FUN=mean), type="l")
+plot(rollapply(gamma[,17], width=50, FUN=mean), type="l")
+
+burnin = 500 # 500 itÃ©rations de burn-in
+gammab = modelnumber[(burnin+1):niter] 
+res = as.data.frame(table(gammab))
+odo = order(res$Freq, decreasing=T)[1:20]
+modcho = res$gammab[odo]
+probtop20 = res$Freq[odo]/(niter-burnin)
+
+indices = match(modcho, modelnumber)
+cbind(probtop20, gamma[indices, ])
+
+```
+
+* Prédiction
+
+```{r echo=FALSE}
+# Prédiction
+reg.f = lm(y~X)
+#summary(reg.f)
+betahat = reg.f$coefficients
+residuals = reg.f$residuals
+s2 = t(residuals)%*%residuals
+
+n<−dim(X)[1] 
+p<−dim(X)[2]
+nb.col<-p
+nbCol1<-nb.col-1
+
+colnames(X)[1]="Intercept"
+g=length(y)
+```
+
+```{r echo=FALSE}
+X = cbind(1, X) # on ajoute une colonne de 1 pour beta_0
+if (det(t(X)%*%X)<=1e-7)
+stop("Design matrix has too low a rank!",call.=FALSE)
+
+Xnew = colMeans(X)
+#Xnew<-Xnew[-1]
+ynew.f = betahat%*%Xnew
+hist(rnorm(niter,ynew.f, sqrt(s2/(n-p))))
+
+ynew.b = rep(NA, niter)
+for(i in 1:niter){
+  X0 = X[, c(T, gamma[i,])]
+  p0 = sum(gamma[i,])
+  betahat0 = (lm(y~X0[,-1]))$coefficients
+  s20 = sum((lm(y~X0[,-1]))$residuals^2)/(n-p0)
+  sigma2=1/rgamma(1, n/2, s20/2 + .5/(g+1) * t(betahat0) %*% t(X0) %*% X0 %*% betahat0)
+  M=sigma2 *g/(g+1) * solve(t(X0)%*%X0)
+  beta = rmvnorm(1, g/(g+1) * betahat0, M)
+  #beta = rmvnorm(1, g/(g+1) * betahat0, sigma2 *g/(g+1) * solve(t(X0)%*%X0))
+  ynew.b[i] = beta %*% Xnew[c(T, gamma[i,])] + rnorm(1, 0, sqrt(sigma2))
+}
+
+hist(ynew.b)
+```
+
+
+```{r echo=FALSE}
+Z= Gibbs.Hoff(y,X,g=length(y),niter = 1e4)
+colmean(Z)
+```
+
+
+
+### Comparaison au résultat obtenu par une analyse fréquentiste
+
+* Analyse fréquentiste
+
+On considère un modéle de régression linéaire gaussien, cad 
+
+$y \mid \alpha,\beta, \sigma^2 \sim N_n(\alpha \mathbb{1_n} + X\beta,\sigma^2 I_n) $
+où $N_n$ est la distribution de la loi normale en dimension n.
+
+Ainsi les  $y_i$  suivent des lois normales indépendantes avec :
+$E(y_i \mid \alpha,\beta, \sigma^2 ) = \alpha + \sum_{j=1}^p \beta_jx_{ij}$
+$V(y_i \mid \alpha,\beta, \sigma^2) = \sigma^2$
+
+
+```{r echo=FALSE}
+reg.f1 = lm(Barre ~ . , data=data.mutations)
+summary(reg.f1)
+
+choix_modele=regsubsets(Barre ~ . ,int=T,nbest=1,nvmax=4,method="exhaustive",data=data.mutations)
+resume=summary(choix_modele)
+#print(resume)
+```
+```{r echo=FALSE, fig.height=5, fig.width=15}
+#quartz()
+par(mfrow=c(1,4))
+plot(choix_modele,scale="r2")
+plot(choix_modele,scale="adjr2")
+#par(mfrow=c(1,2))
+plot(choix_modele,scale="Cp")
+plot(choix_modele,scale="bic")
+```
+
+```{r include=FALSE}
+step_mod<-step(lm(Barre ~ .,data=data.mutations), Barre ~ ., direction="both")
+```
+
+```{r }
+summary(step_mod)
+```
+
+Les 3 covariables qui se dégagent  :
+
+- taux_reussite_attendu_serie_l   
+- taux_acces_attendu_premiere_bac
+- taux_acces_brut_seconde_bac
+
+nettement - "taux_acces_brut_brute_bac"
+
+* On considère les 2 modèles suivants :
+
+taux_reussite_attendu_serie_l + taux_acces_attendu_premiere_bac + taux_acces_brut_seconde_bac + taux_acces_brut_premiere_bac
+```{r }
+#reg.mod2 = lm(Barre ~ Suc.att_l + Acc.att_bac.1  + Acc.brt_bac.1 +  Acc.brt_bac.2, data=dataMutations_d)
+reg.mod2 = lm(Barre ~ taux_reussite_attendu_serie_l + taux_acces_attendu_premiere_bac + taux_acces_brut_seconde_bac + taux_acces_brut_premiere_bac, data=dataMutations_d)
+summary(reg.mod2)
+```
+
+taux_reussite_attendu_serie_l + taux_acces_attendu_premiere_bac + taux_acces_brut_seconde_bac
+
+```{r }
+
+reg.mod1 = lm(Barre ~ taux_reussite_attendu_serie_l 
+             + taux_acces_attendu_premiere_bac 
+             +  taux_acces_brut_seconde_bac, data=dataMutations_d)
+summary(reg.mod1)
+```
+
+*  On réalise maintenant des tests entre modèles emboîtés :
+
+```{r }
+anova(reg.mod2,reg.mod1)
+```
+
+Au vu des p-valeurs des tests de Fisher, on peut envisager de se passer de la variable : taux_acces_brut_premiere_bac
+On conserve le plus petit modèle : reg.mod1
+
+On réalise à nouveaux un test anova, maintenant entre  reg.mod1  et step_mod.
+```{r }
+anova(step_mod,reg.mod1)
+```
+Au vu des p-valeurs des tests de Fisher, on peut envisager de se passer de la variable : taux_acces_brut_seconde_bac
+On conserve le plus petit modèle : step_mod
+
+
+Un estimateur sans biais de $\sigma^2$ est donnée par la formule suivante:
+
+$ \hat{\sigma}^2 = \frac{1}{n-p-1}(y - \hat{\alpha}\mathbb{1_n} - X\hat{\beta})^T(y-\hat{\alpha}\mathbb{1_n} - X\hat{\beta}) = \frac{s^2}{n-p-1}$
+
+on obtient $\sigma^2$ 
+
+
+```{r echo=FALSE}
+betahat = step_mod$coefficients
+residuals = step_mod$residuals
+s2 = t(residuals)%*%residuals
+#summary(reg.f)
+```
+
+
+```{r echo=FALSE}
+
+sigma2 = s2/(n-p-1)
+sigma2
+
+```
+
+et les estimations par les moindres carrés des coéfficients de régression :
+
+```{r echo=FALSE}
+summary(reg.f)
+```
+effectif_presents_serie_l           
+effectif_presents_serie_es
+taux_reussite_attendu_serie_l      
+taux_brut_de_reussite_total_series 
+
+
+### Préselection des covariables
+
+```{r echo=FALSE}
+
+```
+
+## Mutations en mathématiques et anglais
+
+### Mutations en mathématiques
+
+```{r echo=FALSE}
+
+```
+
+### Mutations en anglais
+```{r echo=FALSE}
+
+```
+
+# Loi de Pareto
+
+On ignore maintenant les covariables, et on s'intéresse uniquement à la loi du nombre de points nécessaire (colonne Barre). 
+La loi gaussienne peut paraître peu pertinente pour ces données : on va plutôt proposer une loi de Pareto. 
+Pour $m > 0$ et $\alpha > 0$, on dit que $Z  Pareto(m; \alpha)$ si $Z$ est à valeurs dans $[m;+1[$ de densité:
+
+$f(z\mid \alpha,m) = \alpha \frac{ m^\alpha}{z^{\alpha+1}}\mathbb{1_{[{m,+\infty}[}}$ 
+
+```{r echo=FALSE}
+
+```
+
+## Package R pour générer des réalisation d'une loi de Paréto
+
+```{r echo=FALSE}
+
+```
+
+```{r echo=FALSE}
+
+```
+
+
+```{r GPD, echo=FALSE, fig.height=4, fig.width=15}
+par(mfrow=c(1,2))
+x <- seq(0,10, by =0.05)
+plot(x, devd(x, 1, 1, -0.5, 1, type="GP"), type="l", col="blue", lwd=1.5,ylab="GP df", main="Global Pareto distibutions - GPD")
+lines(x, devd(x, 1, 1, 0, 1, type="GP"), col="lightblue", lwd=1.5)
+lines(x, devd(x, 1, 1, 0.5, 1, type="GP"), col="darkblue", lwd=1.5)
+
+legend("topright", legend=c("Beta", "Exponential", "Pareto"),col=c("blue", "lightblue", "darkblue"), bty="n", lty=1, lwd=1.5)
+
+plot(x, devd(x, 1, 0.5, -0.5, 1, type="GP"), type="l", col="blue", lwd=1.5,
+ylab="GP df", main="Différents paramètres de dimensionnement")
+lines(x, devd(x, 1, 1, 0, 1, type="GP"), col="lightblue", lwd=1.5)
+lines(x, devd(x, 1, 2, 0.5, 1, type="GP"), col="darkblue", lwd=1.5)
+#lines(x, devd(x, 1, 3, 0.5, 1, type="GP"), col="darkblue", lwd=1.5)
+legend("topright", legend=c("Beta", "Exponential", "Pareto"),col=c("blue", "lightblue", "darkblue"), bty="n", lty=1, lwd=1.5)
+text(2,1.6,expression(a == -0.5))
+text(0.5,1,expression(a == 1))
+text(0.5,0.1,expression(a == 2))
+```
+
+
+
+```{r GPD, echo=FALSE, fig.height=4, fig.width=15}
+par(mfrow=c(1,2))
+x <- seq(0,10, by =0.05)
+plot(x, devd(x, 1,  1, 0.5, 1, type="GP"), type="l", col="blue", lwd=1.5,ylab="GP df", main="Global Pareto distibutions - GPD - pour différents alpha")
+lines(x, devd(x, 1, 1, 2, 1, type="GP"), col="lightblue", lwd=1.5)
+lines(x, devd(x, 1, 1, 5, 1, type="GP"), col="darkblue", lwd=1.5)
+
+
+legend("topright", legend=c("Pareto alpha=0.5", "Pareto alpha=2", "Pareto alpha=5"),col=c("blue", "lightblue", "darkblue"), bty="n", lty=1, lwd=1.5)
+
+plot(x, devd(x, 1, 0.5, 0.5, 1, type="GP"), type="l", col="blue", lwd=1.5,ylab="GP df", main="Différents paramètres de dimensionnement")
+lines(x, devd(x, 1, 1, 0.5, 1, type="GP"), col="lightblue", lwd=1.5)
+lines(x, devd(x, 1, 2, 0.5, 1, type="GP"), col="darkblue", lwd=1.5)
+legend("topright", legend=c("Pareto a=0.5", "Pareto a=1", "Pareto a=2"),col=c("blue", "lightblue", "darkblue"), bty="n", lty=1, lwd=1.5)
+text(2,1.6,expression(a == 0.5))
+text(0.5,1,expression(a == 1))
+text(0.5,0.1,expression(a == 2))
+```
+
+## Choix d'une loi à priori pour $\alpha$
+
+- Loi de paréto : $f(z\mid \alpha,m) = \alpha \frac{ m^\alpha}{z^{\alpha+1}}\mathbb{1_{[{m,+\infty}[}}$ 
+
+$f(z\mid \alpha,m) \propto \alpha e^{\alpha log(m/z)}$
+
+$\sim$
+
+A une constante multiplicative près et après transformation en log, on reconnaît une loi exponentielle de paramètre $\alpha$ 
+On peut prendre une loi a priori de type $gamma$ de manière à avoir une loi conjuguée.
+
+
+```{r echo=FALSE}
+
+```
+
+```{r echo=FALSE}
+
+```
+
+## Loi à postériori de $\alpha$
+
+```{r echo=FALSE}
+
+```
+
+```{r echo=FALSE}
+
+```
+
+## Echantillon de la loi à postériori de $\alpha$
+
+Par la méthode de votre choix, tirer un échantillon de la loi a posteriori de. 
+Donner un intervalle de crédibilité à 95%.
+
+```{r echo=FALSE}
+
+
+```
+
+
+```{r echo=FALSE}
+
+
+```
+
+## 8
+
+```{r echo=FALSE}
+
+
+```
+
+```{r echo=FALSE}
+
+
+```
+
+# Annexes
+
+## Test des méthodes BayesReg du package Bayess et BayesReg2 version modifiée
+
+```{r echo=FALSE}
+data(faithful)
+BayesReg(faithful[,1],faithful[,2])
+BayesReg2(faithful[,1],faithful[,2])
+```
+
+```{r echo=FALSE}
+data("caterpillar")
+y.cat=log(caterpillar$y)
+X.cat=as.matrix(caterpillar[,1:8])
+head(y.cat)
+head(X.cat)
+BayesReg(y.cat, X.cat)
+
+```
+
+
+```{r echo=FALSE}
+BayesReg2(y.cat, X.cat)
+```
+
+
+* ModChoBayesReg
+
+```{r eval=FALSE, include=FALSE}
+ModChoBayesReg2(y.cat,X.cat)
+```
+
+```{r eval=FALSE, include=FALSE}
+ModChoBayesReg(y.cat,X.cat)
+```
+
+
+$ f_Y(y) = \frac{\pi(\theta) f_{Y\mid \theta}}{\pi(\theta \mid y)}$ 
+
+La loi jointe $P_{\theta}$ des paramètres $(\beta,\sigma^2)$ a pour distribution le produit des distribution :  
+$f(\theta \mid y) = f(\beta,\sigma^2 \mid y) =\pi(\beta\mid y,\sigma^2)\pi(\sigma^2\mid y)$
+
+Dans le cas du modèle de la régression linéaire : $\theta = (\beta_1, \beta_2,..,\beta_k,\sigma^2) = (\beta,\sigma^2)$
+
+
+* On considére que le paramétre $\theta = (\beta ,\sigma^2)$ a pour prior une loi à priori non informative, prior de Jeffrey: $\pi(\theta) = \pi(\beta,\sigma^2) \propto \frac{1}{\sigma^2}$
+
+* Loi à postériori $\pi(\theta,y)$
+
+La loi jointe $P_{\theta}$ des paramètres $(\beta,\sigma^2)$ a pour distribution le produit des distribution :  
+$\pi(\theta \mid y) = \pi(\beta,\sigma^2 \mid y) =\pi(\beta\mid y,\sigma^2)\pi(\sigma^2\mid y)$
+
+La distribution à postériori du vecteur de régression $\beta$ conditionnellement à la variance (de l'erreur) $\sigma^2$ : 
+
+
+$\mathbf{E}(y_i \mid \beta,X)= \sum_{k=1}^p \beta_kx_{ik}$, i=1,...,n
+Où les varaiables $x_{i1},x_{i2},...x_{ik})$ désignent les prédictor du i-ème individus et les $\beta_1, \beta_2,..,\beta_k$ sont les paramètres de regression inconnus (regressor).
+
+En notant $x_i=(x_{i1},x_{i2},...x_{ik})$ le vecteur ligne des predictors pour le i-ème individus $x_i$ et $\beta=(\beta_1, \beta_2,..,\beta_k)$ le vecteur colonne des coefficients de la régression (regressor) on obtient comme  expression de la moyenne: $\mathbf{E}(y_i \mid \beta,X)=x_i\beta$
+
+Les observations (input) $(y_i)$ sont supposées conditionnellement indépendant des regressor (paramètres) et des predictor (varaiables de prédiction).
+
+On suppose aussi l'hypothèse classique de la regression linéaire ordinaire sur la variance, qui est supposée constante: $V(y_i \mid \theta, X) = \sigma^2$
+
+On note aussi $\theta = (\beta_1, \beta_2,..,\beta_k,\sigma^2) = (\beta,\sigma^2)$ le vecteur de paramètres, qui est l'inconnu de notre problème.
+
+La dernière hypothèse porte sur les erreurs qui sont iid et suivent une gaussienne centrèe de varaiance $\sigma^2$.
+
+Repris du cours et de [REF B2 - Bayesian computation with R - Jim Albert ]
+
+## Régression linéaire bayésienne et interprétation des coéfficients obtenus
+
+Inférence bayésienne à l'aide de la loi a priori g de Zellner
+
+On considère la loi à priori suivante :
+
+$\beta \mid \sigma^2,X \sim N_{k+1}(0,g\sigma^2(^tXX)^{-1}) $
+$\pi(\sigma^2) \propto \sigma^{-2}$
+
+C'est une loi conjugué qui a pour loi à postériori assiciée :
+$\beta \mid \sigma^2,X \sim N_{k+1}(\frac{g}{g+1}\hat{\beta},\frac{\sigma^2g}{g+1}(^tXX)^{-1}) $
+$\sigma^2 \mid y,X \sim IG(\frac{n}{2} \hat{\beta}, \frac{s^2}{2} + \frac{1}{2(g+1)}(^t\hat{\beta} {^tX}X\hat{\beta})$
+
+donc 
+
+$\beta \mid y,X \sim I_{k+1}(n,\frac{g}{g+1}\hat{\beta},\frac{g(s^2 + (^t\hat{\beta} {^tX}X\hat{\beta})/(g+1) )}{n(g+1)} (^tXX)^{-1}) $
+
+
