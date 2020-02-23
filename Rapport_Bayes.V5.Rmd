@@ -35,7 +35,7 @@ output:
 # install.packages("xts")
 # install.packages("zoo")
 # install.packages("tidyverse")
-# install.packages("dyplr")
+# install.packages("dplyr")
 # install.packages("extRemes")
 
 install.packages("rstanarm")
@@ -48,9 +48,6 @@ install.packages("corrplot")
 install.packages("mvtnorm")
 ```
 
-```{r echo=FALSE}
-install.packages('dplyr', repos = 'https://cloud.r-project.org')
-```
 
 ```{r librairies, echo=FALSE, message=FALSE, warning=FALSE}
 rm(list=ls())
@@ -67,7 +64,7 @@ library(BAS)
 library(BMS)
 library(corrplot)
 library(mvtnorm)
-library(dyplr)
+library(dplyr)
 #library(evd)
 #library(evir)
 #library(ismev)
@@ -123,8 +120,463 @@ renameCol<-function(data)
 ```
 
 
+```{r echo=FALSE}
+BayesReg2=function(y,X,g=length(y),betatilde=rep(0,dim(X)[2]),prt=TRUE)
+{
+
+X=as.matrix(X)
+n=length(y)
+p=dim(X)[2]
+for (i in 1:p)
+{
+X[,i]=X[,i]-mean(X[,i])
+X[,i]=X[,i]/sqrt(mean(X[,i]^2))
+}
+
+if (det(t(X)%*%X)<=1e-7) stop("The design matrix has a rank lower than the number of explanatory variables!
+Calculations cannot be done and the process should be stopped!",call.=FALSE)
+U=solve(t(X)%*%X)%*%t(X)
+alphaml=mean(y)
+betaml=U%*%y
+s2=t(y-alphaml-X%*%betaml)%*%(y-alphaml-X%*%betaml)
+kappa=as.numeric(s2+t(betatilde-betaml)%*%t(X)%*%X%*%(betatilde-betaml)/(g+1))
+malphabayes=alphaml
+mbetabayes=g/(g+1)*(betaml+betatilde/g)
+msigma2bayes=kappa/(n-3)
+valphabayes=kappa/(n*(n-3))
+vbetabayes=diag(kappa*g/((g+1)*(n-3))*solve(t(X)%*%X))
+vsigma2bayes=2*kappa^2/((n-3)*(n-4))
+postmean=c(malphabayes,mbetabayes)
+postsqrt=sqrt(c(valphabayes,vbetabayes))
+intlike=(g+1)^(-p/2)*kappa^(-(n-1)/2)
+intlikelog=-(p/2)*log10(g+1)-((n-1)/2)*log10(kappa)
+
+#intlike = -q/2*log(g+1) - n/2*log(t(y)%*%y - g/(g+1)*t(y)%*% X %*% solve(t(X)%*%X) %*%t(X)%*%y)
+
+bayesfactor=rep(0,p)
+
+if (p>=2)
+{
+for (i in 1:p)
+{
+p0=p-1
+X0=X[,-i]
+U0=solve(t(X0)%*%X0)%*%t(X0)
+betatilde0=U0%*%X%*%betatilde
+betaml0=U0%*%y
+s20=t(y-alphaml-X0%*%betaml0)%*%(y-alphaml-X0%*%betaml0)
+kappa0=as.numeric(s20+t(betatilde0-betaml0)%*%t(X0)%*%X0%*%(betatilde0-betaml0)/(g+1))
+intlike0=(g+1)^(-p0/2)*kappa0^(-(n-1)/2)
+#intlike0 = -q/2*log(g+1) - n/2*log(t(y)%*%y - g/(g+1)*t(y)%*% X0 %*% solve(t(X0)%*%X0) %*%t(X0)%*%y)
+intlike0log=-(p0/2)*log10(g+1)-((n-1)/2)*log10(kappa0)
+
+#bayesfactor[i]=intlike/intlike0
+bayesfactor[i]=intlikelog-intlike0log
+
+}
+}
+if (p==1)
+{
+intlike0=(t(y-alphaml)%*%(y-alphaml))^(-(n-1)/2)
+intlike0log=log((t(y-alphaml)%*%(y-alphaml))^(-(n-1)/2))
+
+#bayesfactor=intlike/intlike0
+bayesfactor=intlikelog-intlike0log
+
+}
+
+
+evid=rep("    ",p+1)
+for (i in 1:p)
+{
+if (bayesfactor[i]<0) evid[i+1]="      "
+if (0<=bayesfactor[i] & bayesfactor[i]<=0.5) evid[i+1]="   (*)"
+if (0.5<bayesfactor[i] & bayesfactor[i]<=1) evid[i+1]="  (**)"
+if (1<bayesfactor[i] & bayesfactor[i]<=2) evid[i+1]=" (***)"
+if (bayesfactor[i]>2) evid[i+1]="(****)"
+}
+
+if (prt==TRUE)
+{
+vnames="Intercept"
+for (i in 1:p) vnames=c(vnames,paste("x",i,sep=""))
+cat("\n")
+print(data.frame(PostMean=round(postmean,4),PostStError=round(postsqrt,4),
+Log10bf=c("",round(bayesfactor,4)),EvidAgaH0=evid,row.names=vnames))
+cat("\n")
+cat("\n")
+cat(paste("Posterior Mean of ","Sigma2",":"," ",round(msigma2bayes,4),sep=""))
+cat("\n")
+cat(paste("Posterior StError of ","Sigma2",":"," ",round(sqrt(vsigma2bayes),4),sep=""))
+cat("\n")
+cat("\n")
+}
+list(postmeancoeff=postmean,postsqrtcoeff=postsqrt,log10bf=bayesfactor,postmeansigma2=msigma2bayes,
+postvarsigma2=vsigma2bayes)
+}
+
+```
+
+```{r echo=FALSE}
+ModChoBayesReg2=function(y,X,g=length(y),betatilde=rep(0,dim(X)[2]),niter=100000,prt=TRUE)
+{
+
+X=as.matrix(X)
+n=length(y)
+p=dim(X)[2]
+
+for (i in 1:p)
+{
+X[,i]=X[,i]-mean(X[,i])
+X[,i]=X[,i]/sqrt(mean(X[,i]^2))
+}
+
+if (det(t(X)%*%X)<=1e-7) stop("The design matrix has a rank lower than the number of explanatory variables!
+Calculations cannot be done and the process should be stopped!",call.=FALSE)
+alphaml=mean(y)
+intlike0=(t(y-alphaml)%*%(y-alphaml))^(-(n-1)/2)
+intlikelog0=-((n-1)/2)*log10(t(y-alphaml)%*%(y-alphaml))
+
+if (p<=18)
+{
+intlike=rep(0,2^p)
+intlike[1]=intlike0
+intlikelog=rep(0,2^p)
+intlikelog[1]=intlikelog0
+for (i in 2:2^p)
+{
+gam=as.integer(intToBits(i-1)[1:p]==1)
+pgam=sum(gam)
+Xgam=X[,which(gam==1)]
+Ugam=solve(t(Xgam)%*%Xgam)%*%t(Xgam)
+betatildegam=Ugam%*%X%*%betatilde
+betamlgam=Ugam%*%y
+s2gam=t(y-alphaml-Xgam%*%betamlgam)%*%(y-alphaml-Xgam%*%betamlgam)
+kappagam=as.numeric(s2gam+t(betatildegam-betamlgam)%*%t(Xgam)%*%Xgam%*%(betatildegam-betamlgam)/(g+1))
+intlike[i]=(g+1)^(-pgam/2)*kappagam^(-(n-1)/2)
+intlikelog[i]=(-pgam/2)*log10(g+1)-((n-1)/2)*log10(kappagam)
+}
+
+intlike=intlike/sum(intlike)
+intlikeRes=intlikelog-sum(intlikelog)
+intlikeRes2=intlikelog-prod(intlikelog)
+
+#modcho=order(intlike)[2^p:(2^p-9)]
+#probtop10=intlike[modcho]
+#modtop10=rep("",10)
+
+modcho=order(intlikelog)[2^p:(2^p+9)]
+probtop10=intlikelog[modcho]
+modtop10=rep("",10)
+
+for (i in 1:10)
+{
+modtop10[i]=paste(which(intToBits(modcho[i]-1)==1),collapse=" ")
+}
+
+if (prt==TRUE)
+{
+cat("\n")
+cat("Number of variables less than 15")
+cat("\n")
+cat("Model posterior probabilities are calculated exactly")
+cat("\n")
+cat("\n")
+print(data.frame(Top10Models=modtop10,PostProb=round(probtop10,4)))
+cat("\n")
+cat("\n")
+}
+list(top10models=modtop10,postprobtop10=probtop10)
+}else
+{
+gamma=rep(0,niter)
+mcur=sample(c(0,1),p,replace=TRUE)
+gamma[1]=sum(2^(0:(p-1))*mcur)+1
+pcur=sum(mcur)
+if (pcur==0) {
+  intlikecur=intlike0
+  intlikelogcur=intlikelog0
+}
+else
+{
+Xcur=X[,which(mcur==1)]
+Ucur=solve(t(Xcur)%*%Xcur)%*%t(Xcur)
+betatildecur=Ucur%*%X%*%betatilde
+betamlcur=Ucur%*%y
+s2cur=t(y-alphaml-Xcur%*%betamlcur)%*%(y-alphaml-Xcur%*%betamlcur)
+kappacur=as.numeric(s2cur+t(betatildecur-betamlcur)%*%t(Xcur)%*%Xcur%*%(betatildecur-betamlcur)/(g+1))
+intlikecur=(g+1)^(-pcur/2)*kappacur^(-(n-1)/2)
+intlikelogcur=(-pcur/2)*log10(g+1)-((n-1)/2)*log10(kappacur)
+}
+for (i in 1:(niter-1))
+{
+mprop=mcur
+j=sample(1:p,1)
+mprop[j]=abs(mcur[j]-1)
+pprop=sum(mprop)
+if (pprop==0){
+  intlikeprop=intlike0 
+  intlikelogprop=intlikelog0 
+}else
+{
+Xprop=X[,which(mprop==1)]
+Uprop=solve(t(Xprop)%*%Xprop)%*%t(Xprop)
+betatildeprop=Uprop%*%X%*%betatilde
+betamlprop=Uprop%*%y
+s2prop=t(y-alphaml-Xprop%*%betamlprop)%*%(y-alphaml-Xprop%*%betamlprop)
+kappaprop=as.numeric(s2prop+t(betatildeprop-betamlprop)%*%t(Xprop)%*%Xprop%*%(betatildeprop-betamlprop)/(g+1))
+intlikeprop=(g+1)^(-pprop/2)*kappaprop^(-(n-1)/2)
+intlikelogprop=(-pprop/2)*log10(g+1)-((n-1)/2)*log10(kappaprop)
+}
+dlog=intlikelogprop-intlikelogcur
+res0 = 10^dlog
+
+#if (runif(1)<=(intlikeprop/intlikecur))
+if (runif(1)<=(res0))
+{
+mcur=mprop
+intlikecur=intlikeprop
+}
+gamma[i+1]=sum(2^(0:(p-1))*mcur)+1
+}
+gamma=gamma[20001:niter]
+res=as.data.frame(table(as.factor(gamma)))
+odo=order(res$Freq)[length(res$Freq):(length(res$Freq)+9)]
+modcho=res$Var1[odo]
+probtop10=res$Freq[odo]/(niter-20000)
+modtop10=rep("",10)
+for (i in 1:10)
+{
+modtop10[i]=paste(which(intToBits(as.integer(paste(modcho[i]))-1)==1),collapse=" ")
+}
+if (prt==TRUE)
+{
+cat("\n")
+cat("Number of variables greather than 15")
+cat("\n")
+cat("Model posterior probabilities are estimated by using an MCMC algorithm")
+cat("\n")
+cat("\n")
+print(data.frame(Top10Models=modtop10,PostProb=round(probtop10,4)))
+cat("\n")
+cat("\n")
+}
+list(top10models=modtop10,postprobtop10=probtop10)
+}
+}
+```
+
  
+```{r echo=FALSE}
+## fonction pour calculer les bayes factor
+CalcBayesFactor=function(y,X,g=length(y))
+{
+n = dim(X)[1]
+p = dim(X)[2]
+q = 1
+#g = n
+
+#X0 = X[,-(7:8)]
+bfactor=rep(0,p)
+
+for(i in 1:p)
+{
+  X0 = X[,-i]
+  BF = (g+1)^(q/2) * 
+    ((t(y)%*%y - g/(g+1) * t(y)%*%X0 %*% solve(t(X0)%*%X0) %*% t(X0)%*%y)/
+    (t(y)%*%y - g/(g+1) * t(y)%*%X %*% solve(t(X)%*%X) %*% t(X)%*%y))^(n/2)
+  bfactor[i]=round(log10(BF),4)
+}
+
+bayesfactor<-cbind.data.frame(colnames(X),bfactor)
+bayesfactor<-bayesfactor[order(-bayesfactor$bfactor),]
+return (bayesfactor)
+}
+
+## fonction pour calculer la log-vraisemblance marginale
+marglkd = function(gamma, X, y, g=length(y)){
+  q=sum(gamma)
+  X = cbind(1, X) # on ajoute une colonne de 1 pour beta_0
+  X1=X[ ,c(T,gamma)]
+  if(q==0){return( -n/2 * log(t(y)%*%y))}
+  m = -q/2*log(g+1) -
+    n/2*log(t(y)%*%y - g/(g+1)* t(y)%*% X1 %*%
+              solve(t(X1)%*%X1) %*%t(X1)%*%y)
+return(m)
+}
+
+##Gibbs
+Gibbs = function (y,X,g=length(y),niter = 1e4)
+{
+  nbCol = dim(X)[2]
+  nbCol1 = nbCol-1
+  
+  #niter = 1e4 # nombre d'itérations
+  gamma = matrix(F, nrow = niter, ncol = nbCol)
+  gamma0 = sample(c(T, F), size = nbCol, replace = TRUE) # aleur initiale aléatoire
+  
+  lkd = rep(0, niter)
+  modelnumber = rep(0, niter)
+  
+  oldgamma = gamma0
+  for(i in 1:niter){
+    newgamma = oldgamma
+    for(j in 1:nbCol){
+      g1 = newgamma; g1[j]=TRUE
+      g2 = newgamma; g2[j]=FALSE
+      ml1 = marglkd(g1, X, y)
+      ml2 = marglkd(g2, X, y)
+      p = c(ml1,ml2)-min(ml1,ml2)
+      # On souhaite tirer depuis une Bernoulli, avec probabilité de tirer TRUE égale à exp(p[1])/(exp(p[1])+exp(p[2])).
+      # C'est ce que fait la ligne suivante. Notons que la fonction sample() calcule la constante de normalisation.
+      newgamma[j] = sample(c(T,F), size=1, prob=exp(p)) 
+    }
+    gamma[i,] = newgamma
+    lkd[i] = marglkd(newgamma, X ,y)
+    modelnumber[i] = sum(newgamma*2^(0:nbCol1))
+    oldgamma = newgamma
+  }
+  
+  gamma.res<-cbind.data.frame(X=colnames(X),gamma.mean=colMeans(gamma))
+  gamma.res<-gamma.res[order(-gamma.res$gamma.mean),]
+  return (gamma.res)
+}
+```
+
+
+```{r echo=FALSE}
+blm <- "
+data {
+int<lower=0> n; // number cases
+int<lower=0> p; // number of regressors
+matrix[n, p] X; // model matrix
+vector[n] y; // response vector
+}
+parameters {
+vector[p] beta; // regression coefficients
+real<lower=0> sigma; // residual std. dev.
+}
+transformed parameters {
+vector[n] mu = X*beta; // expectation of y
+}
+model {
+y ~ normal(mu, sigma); // likelihood
+}
+"
+bayeslm <- function(formula, data, subset, na.action, contrasts=NULL, ...){
+if (!require(rstan)) stop ("rstan package not available")
+cl <- match.call()
+mf <- match.call(expand.dots = FALSE)
+m <- match(c("formula", "data", "subset", "na.action"),
+names(mf), 0L)
+mf <- mf[c(1L, m)]
+mf$drop.unused.levels <- TRUE
+mf[[1L]] <- quote(stats::model.frame)
+mf <- eval(mf, parent.frame())
+mt <- attr(mf, "terms")
+y <- model.response(mf, "numeric")
+X <- model.matrix(mt, mf, contrasts)
+n <- length(y)
+p <- ncol(X)
+Data <- list(n=n, X=X, y=y, p=p)
+stan(model_code=blm, model_name="Linear Model", data=Data, ...)
+}
+```
+
+
+```{r echo=FALSE}
+RegBayes.Hopf = function (y,X,g=length(y),nu0=1,s20=summary(lm(y~−1+X))$sigma^2, niter = 1e4) 
+{
+  #nu0<−1  
+  #s20 <− summary(lm(y~−1+X))$sigma^2 #8.54
+  #s20<-0.6528
+  S<−niter
+  
+  ## data : y , X
+  ## prior parameter s : g ,nu0, s20
+  ## number of independent samples to generate : S
+  
+  n<−dim(X) [1] 
+  p<−dim(X)[2]
+  Hg<−(g/(g+1))*X%*%solve(t(X)%*%X)%*%t(X)
+  SSRg<−t(y)%*%(diag(1,nrow=n)−Hg)%*%y
+  s2<−1/rgamma(S,(nu0+n)/2,(nu0*s20+SSRg)/2)
+  Vb<− g*solve (t (X)%*%X)/(g+1)
+  Eb<− Vb%*%t(X)%*%y
+  E<−matrix(rnorm(S*p,0,sqrt(s2)),S,p)
+  beta<−t(t(E%*%chol(Vb))+c(Eb))
+  sumBeta<-summary(beta)
+  betaMean<-colMeans(beta)
+  betaMean<-as.data.frame(betaMean)
+  rerun(beta)
+}
+```
+
+```{r echo=FALSE}
+##### a function to compute the marginal probability
+lpy.X<−function (y ,X, g=length(y) ,nu0=1, s20=try(summary(lm(y~−1+X))$sigma^2 ,silent=TRUE) )
+{
+  n<−dim(X) [ 1 ] ; p<−dim(X) [2]
+  if (p==0) { Hg<−0 ; s20<−mean(y^2) }
+  if (p>0) { Hg<−(g/( g+1)) * X%*%solve(t(X)%*%X)%*%t(X)}
+  SSRg<− t(y)%*%( diag (1,nrow=n) − Hg)%*%y
+  res<-−.5*(n*log(pi)+p*log(1+g)+(nu0+n)*log(nu0*s20+SSRg)−nu0*log( nu0*s20))+
+  lgamma((nu0+n)/2)−lgamma(nu0/2)
+  return(res)
+}
+
+#### Gibbs sampler
+Gibbs.Hopf = function (y,X,g=length(y),niter = 1e4)
+{
+  ##### starting values and MCMC setup
+  z<−rep (1 ,dim(X)[2])
+  lpy.c<−lpy.X(y ,X[,z==1,drop=FALSE])
+  #lpy.c<−lpy.X(y ,X[,z==1,drop=FALSE], g=length(y) ,nu0=1, s20=)
+  
+  S<−niter
+  Z<−matrix(NA,S,dim(X)[2])
+
+  ##### Gibbs sampler
+  for (s in 1:S)
+  {
+    for (j in sample (1:dim(X)[2]))
+    {
+      zp<−z ; zp [j]<−1−zp [j]
+      lpy.p<−lpy.X(y ,X[ ,zp==1,drop=FALSE] )
+        
+      r<− (lpy.p − lpy.c)*(−1)^(zp[j]==0)
+      z [j]<−rbinom(1 ,1 ,1/(1+exp(−r ) ) )
+        
+      if(z[j]==zp[j]) {lpy.c<−lpy.p}
+    }
+    Z[s,]<−z
+  }
+  
+  #return colmean(Z)
+  return (Z)
+}
+```
+
+## test des fonctions
+```{r echo=FALSE}
+BayesReg2(y,X,g=length(y))
+
+ModChoBayesReg2(y,X,g=length(y))
+
+bayesfactor = CalcBayesFactor(y,X,g=length(y))
+gamma.res = Gibbs(y,X,g=length(y),niter = 1e4)
+
  
+beta = RegBayes.Hopf(y,X,g=length(y),nu0=1,s20=summary(lm(y~−1+X))$sigma^2, niter = 1e4) 
+sumBeta<-summary(beta)
+betaMean<-colMeans(beta)
+betaMean<-as.data.frame(betaMean)
+
+Z= Gibbs.Hopf(y,X,g=length(y),niter = 1e4)
+colmean(Z)
+```
+
+
 \pagebreak
 
 # Introduction
@@ -198,21 +650,19 @@ Accès brute: Acc.brt_bac.2/Acc.brt_bac.1
 8
 
 
-```{r echo=FALSE, fig.width=15}
+```{r echo=FALSE}
 datam2<-dataMut[,-c(1:5)]
-datam2 <- as_tibble(dataMut[,-c(1:5)])
-datam2 %>% select(Prs_l,Prs_es,Prs_s,Suc.brt_l,Suc.brt_es,Suc.brt_s,Suc.att_l,Acc.brt_bac.2,Acc.brt_bac.1)
-class(datam2)
-datam2 %>% select(Prs_l)
+#datam2 <- as_tibble(dataMut[,-c(1:5)])
+#datam2 %>% select(Prs_l,Prs_es,Prs_s,Suc.brt_l,Suc.brt_es,Suc.brt_s,Suc.att_l,Acc.brt_bac.2,Acc.brt_bac.1)
+
+datam2<-subset(datam2, select=c("Barre","Prs_l","Prs_es","Prs_s","Suc.brt_l","Suc.brt_es","Suc.brt_s","Suc.att_l","Acc.brt_bac.2","Acc.brt_bac.1"))
+
 head(datam2)
 
 datamat2=data.matrix(datam2)
 mcor2<-cor(datamat2)
 corrplot(mcor2, type="upper", order="hclust", tl.col="black", tl.srt=45)
 
-my_data <- as_tibble(iris)
-my_data
-my_data %>% select(1:3)
 
 ```
 
@@ -541,45 +991,6 @@ diagnostics(regb, type="pip", col = "blue", pch = 16, cex = 1.5)
 ```
 
 ```{r echo=FALSE}
-blm <- "
-data {
-int<lower=0> n; // number cases
-int<lower=0> p; // number of regressors
-matrix[n, p] X; // model matrix
-vector[n] y; // response vector
-}
-parameters {
-vector[p] beta; // regression coefficients
-real<lower=0> sigma; // residual std. dev.
-}
-transformed parameters {
-vector[n] mu = X*beta; // expectation of y
-}
-model {
-y ~ normal(mu, sigma); // likelihood
-}
-"
-bayeslm <- function(formula, data, subset, na.action, contrasts=NULL, ...){
-if (!require(rstan)) stop ("rstan package not available")
-cl <- match.call()
-mf <- match.call(expand.dots = FALSE)
-m <- match(c("formula", "data", "subset", "na.action"),
-names(mf), 0L)
-mf <- mf[c(1L, m)]
-mf$drop.unused.levels <- TRUE
-mf[[1L]] <- quote(stats::model.frame)
-mf <- eval(mf, parent.frame())
-mt <- attr(mf, "terms")
-y <- model.response(mf, "numeric")
-X <- model.matrix(mt, mf, contrasts)
-n <- length(y)
-p <- ncol(X)
-Data <- list(n=n, X=X, y=y, p=p)
-stan(model_code=blm, model_name="Linear Model", data=Data, ...)
-}
-```
-
-```{r echo=FALSE}
 y = dataMutations_d[, 6]
 X = as.matrix(dataMutations_d[, 7:23])
 df <- data.frame(X,y)
@@ -870,30 +1281,6 @@ summary(foo)
 ```
 
 ```{r echo=FALSE}
-
-g<−length(y) 
-nu0<−1  
-#s20 <− summary(lm(y~−1+X))$sigma^2 #8.54
-s20<-0.6528
-S<−10000
-## data : y , X
-## p r i o r parameter s : g , nu0 , s20
-## number o f independent samples to g ene r a t e : S
-n<−dim(X) [1] 
-p<−dim(X)[2]
-Hg<−(g/(g+1))*X%*%solve(t(X)%*%X)%*%t(X)
-SSRg<−t(y)%*%(diag(1,nrow=n)−Hg)%*%y
-s2<−1/rgamma(S,(nu0+n)/2,(nu0*s20+SSRg)/2)
-Vb<− g*solve (t (X)%*%X)/(g+1)
-Eb<− Vb%*%t(X)%*%y
-E<−matrix(rnorm(S*p,0,sqrt(s2)),S,p)
-beta<−t(t(E%*%chol(Vb))+c(Eb))
-sumBeta<-summary(beta)
-betaMean<-colMeans(beta)
-betaMean<-as.data.frame(betaMean)
-```
-
-```{r echo=FALSE}
 g=length(y)
 betatilde=rep(0,dim(X)[2])
 
@@ -935,6 +1322,31 @@ post.reg.Zellner
 ```{r echo=FALSE}
 
 BayesReg2(y,X)
+```
+
+
+```{r echo=FALSE}
+
+g<−length(y) 
+nu0<−1  
+#s20 <− summary(lm(y~−1+X))$sigma^2 #8.54
+s20<-0.6528
+S<−10000
+## data : y , X
+## p r i o r parameter s : g , nu0 , s20
+## number o f independent samples to g ene r a t e : S
+n<−dim(X) [1] 
+p<−dim(X)[2]
+Hg<−(g/(g+1))*X%*%solve(t(X)%*%X)%*%t(X)
+SSRg<−t(y)%*%(diag(1,nrow=n)−Hg)%*%y
+s2<−1/rgamma(S,(nu0+n)/2,(nu0*s20+SSRg)/2)
+Vb<− g*solve (t (X)%*%X)/(g+1)
+Eb<− Vb%*%t(X)%*%y
+E<−matrix(rnorm(S*p,0,sqrt(s2)),S,p)
+beta<−t(t(E%*%chol(Vb))+c(Eb))
+sumBeta<-summary(beta)
+betaMean<-colMeans(beta)
+betaMean<-as.data.frame(betaMean)
 ```
 
 
@@ -1343,155 +1755,7 @@ list(top10models=modtop10,postprobtop10=probtop10)
 
 ```
 
-```{r echo=FALSE}
-ModChoBayesReg2=function(y,X,g=length(y),betatilde=rep(0,dim(X)[2]),niter=100000,prt=TRUE)
-{
 
-X=as.matrix(X)
-n=length(y)
-p=dim(X)[2]
-
-for (i in 1:p)
-{
-X[,i]=X[,i]-mean(X[,i])
-X[,i]=X[,i]/sqrt(mean(X[,i]^2))
-}
-
-if (det(t(X)%*%X)<=1e-7) stop("The design matrix has a rank lower than the number of explanatory variables!
-Calculations cannot be done and the process should be stopped!",call.=FALSE)
-alphaml=mean(y)
-intlike0=(t(y-alphaml)%*%(y-alphaml))^(-(n-1)/2)
-intlikelog0=-((n-1)/2)*log10(t(y-alphaml)%*%(y-alphaml))
-
-if (p<=18)
-{
-intlike=rep(0,2^p)
-intlike[1]=intlike0
-intlikelog=rep(0,2^p)
-intlikelog[1]=intlikelog0
-for (i in 2:2^p)
-{
-gam=as.integer(intToBits(i-1)[1:p]==1)
-pgam=sum(gam)
-Xgam=X[,which(gam==1)]
-Ugam=solve(t(Xgam)%*%Xgam)%*%t(Xgam)
-betatildegam=Ugam%*%X%*%betatilde
-betamlgam=Ugam%*%y
-s2gam=t(y-alphaml-Xgam%*%betamlgam)%*%(y-alphaml-Xgam%*%betamlgam)
-kappagam=as.numeric(s2gam+t(betatildegam-betamlgam)%*%t(Xgam)%*%Xgam%*%(betatildegam-betamlgam)/(g+1))
-intlike[i]=(g+1)^(-pgam/2)*kappagam^(-(n-1)/2)
-intlikelog[i]=(-pgam/2)*log10(g+1)-((n-1)/2)*log10(kappagam)
-}
-
-intlike=intlike/sum(intlike)
-intlikeRes=intlikelog-sum(intlikelog)
-intlikeRes2=intlikelog-prod(intlikelog)
-
-#modcho=order(intlike)[2^p:(2^p-9)]
-#probtop10=intlike[modcho]
-#modtop10=rep("",10)
-
-modcho=order(intlikelog)[2^p:(2^p-9)]
-probtop10=intlikelog[modcho]
-modtop10=rep("",10)
-
-for (i in 1:10)
-{
-modtop10[i]=paste(which(intToBits(modcho[i]-1)==1),collapse=" ")
-}
-
-if (prt==TRUE)
-{
-cat("\n")
-cat("Number of variables less than 15")
-cat("\n")
-cat("Model posterior probabilities are calculated exactly")
-cat("\n")
-cat("\n")
-print(data.frame(Top10Models=modtop10,PostProb=round(probtop10,4)))
-cat("\n")
-cat("\n")
-}
-list(top10models=modtop10,postprobtop10=probtop10)
-}else
-{
-gamma=rep(0,niter)
-mcur=sample(c(0,1),p,replace=TRUE)
-gamma[1]=sum(2^(0:(p-1))*mcur)+1
-pcur=sum(mcur)
-if (pcur==0) {
-  intlikecur=intlike0
-  intlikelogcur=intlikelog0
-}
-else
-{
-Xcur=X[,which(mcur==1)]
-Ucur=solve(t(Xcur)%*%Xcur)%*%t(Xcur)
-betatildecur=Ucur%*%X%*%betatilde
-betamlcur=Ucur%*%y
-s2cur=t(y-alphaml-Xcur%*%betamlcur)%*%(y-alphaml-Xcur%*%betamlcur)
-kappacur=as.numeric(s2cur+t(betatildecur-betamlcur)%*%t(Xcur)%*%Xcur%*%(betatildecur-betamlcur)/(g+1))
-intlikecur=(g+1)^(-pcur/2)*kappacur^(-(n-1)/2)
-intlikelogcur=(-pcur/2)*log10(g+1)-((n-1)/2)*log10(kappacur)
-}
-for (i in 1:(niter-1))
-{
-mprop=mcur
-j=sample(1:p,1)
-mprop[j]=abs(mcur[j]-1)
-pprop=sum(mprop)
-if (pprop==0){
-  intlikeprop=intlike0 
-  intlikelogprop=intlikelog0 
-}else
-{
-Xprop=X[,which(mprop==1)]
-Uprop=solve(t(Xprop)%*%Xprop)%*%t(Xprop)
-betatildeprop=Uprop%*%X%*%betatilde
-betamlprop=Uprop%*%y
-s2prop=t(y-alphaml-Xprop%*%betamlprop)%*%(y-alphaml-Xprop%*%betamlprop)
-kappaprop=as.numeric(s2prop+t(betatildeprop-betamlprop)%*%t(Xprop)%*%Xprop%*%(betatildeprop-betamlprop)/(g+1))
-intlikeprop=(g+1)^(-pprop/2)*kappaprop^(-(n-1)/2)
-intlikelogprop=(-pprop/2)*log10(g+1)-((n-1)/2)*log10(kappaprop)
-}
-dlog=intlikelogprop-intlikelogcur
-res0 = 10^dlog
-
-#if (runif(1)<=(intlikeprop/intlikecur))
-if (runif(1)<=(res0))
-{
-mcur=mprop
-intlikecur=intlikeprop
-}
-gamma[i+1]=sum(2^(0:(p-1))*mcur)+1
-}
-gamma=gamma[20001:niter]
-res=as.data.frame(table(as.factor(gamma)))
-odo=order(res$Freq)[length(res$Freq):(length(res$Freq)+9)]
-modcho=res$Var1[odo]
-probtop10=res$Freq[odo]/(niter-20000)
-modtop10=rep("",10)
-for (i in 1:10)
-{
-modtop10[i]=paste(which(intToBits(as.integer(paste(modcho[i]))-1)==1),collapse=" ")
-}
-if (prt==TRUE)
-{
-cat("\n")
-cat("Number of variables greather than 15")
-cat("\n")
-cat("Model posterior probabilities are estimated by using an MCMC algorithm")
-cat("\n")
-cat("\n")
-print(data.frame(Top10Models=modtop10,PostProb=round(probtop10,4)))
-cat("\n")
-cat("\n")
-}
-list(top10models=modtop10,postprobtop10=probtop10)
-}
-}
-
-```
 
 
 
