@@ -1,5 +1,5 @@
 ---
-title: "Rapport - Statistique bayesienne"
+title: "Rapport - Statistique bayésienne"
 btitle: ""
 author: "Philippe Real"
 date: '`r format(Sys.time(), " %d %B, %Y")`'
@@ -1345,9 +1345,12 @@ taux_brut_de_reussite_total_series
 
 ```
 
+### Conclusion
+
+
+
 ## Mutations en mathématiques et anglais
 
-### Mutations en mathématiques
 
 ```{r echo=FALSE}
 d.math = as.data.frame(dataMutations_d[which(dataMutations_d$Matiere=="MATHS"),])
@@ -1366,6 +1369,7 @@ y.en<- d.en[, 6]
 
 ```
 
+
 ### Calcul explicite des coefficients 
 
 * G-prior informative de Zellner 
@@ -1373,7 +1377,7 @@ Hypothèses Zellner G-prior
 calcul de $\hat{\beta}$ coefficient du modèle linéaire: $\hat{\beta}=(X^TX)^{-1}X^Ty$
 Calcul de $E^{\pi}(\beta \mid y,X)=\frac{g}{g+1}(\hat{\beta}+\frac{\tilde{\beta}}{g})$
 
-* Math
+* Mutations - Mathématiques
 
 ```{r}
 y<-y.math
@@ -1397,8 +1401,7 @@ reg.lm=lm(y~X)
 summary(reg.lm)
 ```
 
-
-* Anglais
+* Mutations - Anglais
 
 ```{r}
 y<-y.en
@@ -1421,177 +1424,92 @@ reg.lm=lm(y~X)
 summary(reg.lm)
 ```
 
-
-### Choix des covariables
+### Choix des covariables à l'aide des Bayes factor
 
 Bayes Factors et comparaison de modèles
 Pour comparer les modèles on peut utiliser les facteurs de Bayes
+On test l'hypothèse $H_0$, $\forall i=1,...,17$ et on calcul le Bayes Factor à partir de la fonction $BayesReg2$ pour $g=n$
 
-* Test d'hypothèse $H_0: \beta_i=0  i$  
 
-On test l'hypothèse $H_0$, $\forall i=1,...,17$ et on calcul le Bayes Factor à partir de la formule du cours (TP4) 
+* Mutations en mathématiques - A partir de la fonction $BayesReg2$ pour $g=n$
+```{r echo=FALSE}
+y<-y.math
+X<-X.math
+   
+BayesReg(y,X,g=length(y))
+```
 
-* A partir de la fonction $CalcBayesFactor$ pour $g=n$
+* Mutations en mathématiques - A partir de la fonction $BayesReg2$ pour $g=1$
+
+```{r echo=FALSE}
+BayesReg(y,X,g=1)
+```
+
+* Mutations en anglais - A partir de la fonction $BayesReg2$ pour $g=n$
+
+```{r echo=FALSE}
+y<-y.en
+X<-X.en
+   
+BayesReg(y,X,g=length(y))
+```
+
+* Mutations en anglais - A partir de la fonction $BayesReg2$ pour $g=1$
+
+```{r echo=FALSE}
+BayesReg(y,X,g=1)
+```
+
+
+* Conclusion 
+
+Critère de choix : Succés brute S
+
+### Choix de modèles par test de tous les modèles ou Gibbs-sampler 
+
+On utilse la fonctionModChoBayesReg du package Bayess
+
+* Mutations en Math
 
 ```{r echo=FALSE}
 y<-y.math
 X<-X.math
-                       
-bayesfactor = CalcBayesFactor(y,X,g=length(y))
-bayesfactor
+
+ModChoBayesReg(y,X,g=length(y))
 ```
 
+La 6ème covariable est omniprésente dans tous les modèles. La probabilité à piriori du modèle constitué de cette seule variable  est écrasante
 
-* A partir de la fonction $BayesReg2$ pour $g=n$
+
+* Mutations en Anglais
 
 ```{r echo=FALSE}
-BayesReg2(y,X,g=length(y))
+y<-y.en
+X<-X.en
+
+ModChoBayesReg(y,X,g=length(y))
 ```
-
-* A partir de la fonction $CalcBayesFactor$ pour $g=1$
-
-```{r echo=FALSE}
-bayesfactor = CalcBayesFactor(y,X,g=1)
-bayesfactor
-```
-
-* A partir de la fonction $BayesReg2$ pour $g=1$
-
-```{r echo=FALSE}
-BayesReg2(y,X,g=1)
-```
-
-* Conclusion 
-les 7ème (Suc.att_l),	12ème (Acc.brt_bac.2) et 14ème (Acc.brt_bac.1) variables sont les plus significatives.
-
-
-```{r echo=FALSE}
-
-```
-
-```{r echo=FALSE}
-
-```
-
-
-
-* Choix de modèle : calcul exact
-
-A partir de la méthoide vue en TP, on va considérer les 4 variables les plus significatives
-
-```{r echo=FALSE}
-# calculons la log-vraisemblance marginale des 8 modÃ¨les
-X_restreint = cbind(X[,"Suc.att_l"],X[,"Acc.brt_bac.2"],X[,"Acc.brt_bac.1"],X[,"Acc.att_bac.1"])
-#X_restreint = cbind(X[,"taux_reussite_attendu_serie_l"],X[,"taux_acces_attendu_premiere_bac"],X[,"taux_acces_brut_seconde_bac"],X[,"taux_brut_de_reussite_total_series"])
-#X[,1:4]
-logprob3 = c(
-marglkd(c(F,F,F), X_restreint, y),
-marglkd(c(F,F,T), X_restreint, y),
-marglkd(c(F,T,F), X_restreint, y),
-marglkd(c(F,T,T), X_restreint, y),
-marglkd(c(T,F,F), X_restreint, y),
-marglkd(c(T,F,T), X_restreint, y),
-marglkd(c(T,T,F), X_restreint, y),
-marglkd(c(T,T,T), X_restreint, y))
-# on peut ajouter une constante, qui évitera les erreurs numéiques
-logprob3 = logprob3-max(logprob3)
-# les probabilités des modèles sont donc
-prob3 = exp(logprob3)/sum(exp(logprob3))
-round(prob3, 3)
-```
-
-c'est le modèle ( T,F, F) qui est de loin le plus probable a posteriori
-le modèle avec la covariable: taux_reussite_attendu_serie_l (Suc.att_l)
-
-A partir de la fonction (modifée) - ModChoBayesReg du package Bayess
-
-```{r echo=FALSE}
-ModChoBayesReg2(y,X,g=length(y))
-```
-
-* Choix de modèle par échantillonnage de Gibbs
-
-Avec la fonction utilsée en TP
-
-```{r echo=FALSE, message=FALSE, warning=FALSE}
-res.Gibbs = Gibbs(y,X,g=length(y),niter = 1e4)
-```
-[1] 0.1927 0.2517 0.5165 0.1815 0.2063 0.2628 0.4438 0.4137
-
-```{r echo=FALSE}
-modelnumber = res.Gibbs[,1]
-gamma = res.Gibbs[,-1]
-gamma.res<-cbind.data.frame(X=colnames(X),gamma.mean=colMeans(gamma))
-gamma.res<-gamma.res[order(-gamma.res$gamma.mean),]
-gamma.res
-```
-
-On regarde la convergence de la méthode :
-
-```{r echo=FALSE, fig.height=12, fig.width=15}
-# Vérifions le mélange de la chaine de Markov à l'aide des autocorrélations.
-par(mfrow=c(6,3))
-for(i in 1:17) acf(as.numeric(gamma[,i]))
-# Autocorrélation décroit rapidement. Pas besoin de sous-échantillonner.
-
-```
-
-
-
-```{r echo=FALSE}
-
-
-```
-
-
-* Vérifions la convergence + le mélange à l'aide de la trace (on utilise une moyenne glissante puisque les valeurs sont binaires).
-
-```{r echo=FALSE, fig.width=15}
-
-library(zoo)
-
-nbCol = dim(X)[2]
-p<-nbCol
-niter=10000
-
-par(mfrow=c(4,4))
-for(i in 2:15) plot(rollapply(gamma[,i], width=50, FUN=mean), type="l")
-
-plot(rollapply(gamma[,16], width=50, FUN=mean), type="l")
-plot(rollapply(gamma[,17], width=50, FUN=mean), type="l")
-
-burnin = 500 # 500 itÃ©rations de burn-in
-gammab = modelnumber[(burnin+1):niter] 
-res = as.data.frame(table(gammab))
-odo = order(res$Freq, decreasing=T)[1:20]
-modcho = res$gammab[odo]
-probtop20 = res$Freq[odo]/(niter-burnin)
-
-indices = match(modcho, modelnumber)
-cbind(probtop20, gamma[indices, ])
-
-```
-
-
-
+On retrouve la encore la prédominance de la 6ème variable : $Suc.brt_s$ = Réussite brute terminale s.
 
 ### Comparaison au résultat obtenu par une analyse fréquentiste
 
+* Analyse fréquentiste - Mutations en mathématiques
 
 ```{r echo=FALSE}
-reg.math = lm(y.math~X.math)
-summary(reg.math)
+d.math.reg = as.data.frame(dataMutations_d[which(dataMutations_d$Matiere=="MATHS"),])
+row.names(d.math.reg) <- NULL
+d.math.reg<-d.math.reg[,-c(1:5)]
 ```
 
-
 ```{r echo=FALSE}
-reg.f1 = lm(Barre ~ . , data=data.mutations)
+reg.f1 = lm(Barre ~ . , data=d.math.reg)
 summary(reg.f1)
 
-choix_modele=regsubsets(Barre ~ . ,int=T,nbest=1,nvmax=4,method="exhaustive",data=data.mutations)
+choix_modele=regsubsets(Barre ~ . ,int=T,nbest=1,nvmax=4,method="exhaustive",data=d.math.reg)
 resume=summary(choix_modele)
 #print(resume)
 ```
+
 ```{r echo=FALSE, fig.height=5, fig.width=15}
 #quartz()
 par(mfrow=c(1,4))
@@ -1603,7 +1521,7 @@ plot(choix_modele,scale="bic")
 ```
 
 ```{r include=FALSE}
-step_mod<-step(lm(Barre ~ .,data=data.mutations), Barre ~ ., direction="both")
+step_mod<-step(lm(Barre ~ .,data=d.math.reg), Barre ~ ., direction="both")
 ```
 
 ```{r }
@@ -1611,11 +1529,48 @@ summary(step_mod)
 ```
 
 
+* Analyse fréquentiste - Mutations en Anglais
 
-### Mutations en anglais
 ```{r echo=FALSE}
-
+d.en.reg = as.data.frame(dataMutations_d[which(dataMutations_d$Matiere=="ANGLAIS"),])
+row.names(d.en.reg) <- NULL
+d.en.reg<-d.en.reg[,-c(1:5)]
 ```
+
+
+```{r echo=FALSE}
+reg.f1 = lm(Barre ~ . , data=d.en.reg)
+summary(reg.f1)
+
+choix_modele=regsubsets(Barre ~ . ,int=T,nbest=1,nvmax=4,method="exhaustive",data=d.en.reg)
+resume=summary(choix_modele)
+#print(resume)
+```
+
+```{r echo=FALSE, fig.height=5, fig.width=15}
+#quartz()
+par(mfrow=c(1,4))
+plot(choix_modele,scale="r2")
+plot(choix_modele,scale="adjr2")
+#par(mfrow=c(1,2))
+plot(choix_modele,scale="Cp")
+plot(choix_modele,scale="bic")
+```
+
+```{r include=FALSE}
+step_mod<-step(lm(Barre ~ .,data=d.en.reg), Barre ~ ., direction="both")
+```
+
+```{r }
+summary(step_mod)
+```
+
+
+## Conclusion
+Pour les mutations en Math et en Anglais, on a plus de difficulté à sélectionner les variables dans le cas fréquentiste, alors que dans le cas bayésien une covariable ressort très nettement.
+Et confirme 
+
+
 
 # Loi de Pareto
 
@@ -1761,7 +1716,7 @@ BayesReg(y.cat, X.cat)
 
 
 ```{r echo=FALSE}
-BayesReg2(y.cat, X.cat)
+BayesReg2(y.cat, X.cat,cr=TRUE)
 ```
 
 
