@@ -78,16 +78,17 @@ library(dplyr)
 #### Choix de Modèles => fonction légèrement corrigé du package Bayess
 ####                     passage aux log10 pour corriger dépassement
 #########################################################################
-ModChoBayesReg2=function(y,X,g=length(y),betatilde=rep(0,dim(X)[2]),niter=100000,prt=TRUE)
+ModChoBayesReg2=function(y,X,g=length(y),betatilde=rep(0,dim(X)[2]),niter=100000,cr=FALSE,prt=TRUE)
 {
 X=as.matrix(X)
 n=length(y)
 p=dim(X)[2]
 
-for (i in 1:p)
-{
-  X[,i]=X[,i]-mean(X[,i])
-  X[,i]=X[,i]/sqrt(mean(X[,i]^2))
+if(cr==TRUE) {
+  for (i in 1:p) {
+    X[,i]=X[,i]-mean(X[,i])
+    X[,i]=X[,i]/sqrt(mean(X[,i]^2))
+  }
 }
   
 if (det(t(X)%*%X)<=1e-7) stop("The design matrix has a rank lower than the number of explanatory variables!
@@ -230,16 +231,18 @@ if (p<=18)
 #### Estim Bayes-G Prior => fonction légèrement corrigé du package Bayess
 ####                          passage aux log10 pour corriger dépassement
 #########################################################################
-BayesReg2=function(y,X,g=length(y),betatilde=rep(0,dim(X)[2]),prt=TRUE)
+BayesReg2=function(y,X,g=length(y),betatilde=rep(0,dim(X)[2]),cr=FALSE,prt=TRUE)
 {
 
 X=as.matrix(X)
 n=length(y)
 p=dim(X)[2]
-for (i in 1:p)
-{
-X[,i]=X[,i]-mean(X[,i])
-X[,i]=X[,i]/sqrt(mean(X[,i]^2))
+
+if(cr==TRUE) {
+  for (i in 1:p) {
+    X[,i]=X[,i]-mean(X[,i])
+    X[,i]=X[,i]/sqrt(mean(X[,i]^2))
+  }
 }
 
 if (det(t(X)%*%X)<=1e-7) stop("The design matrix has a rank lower than the number of explanatory variables!
@@ -331,27 +334,34 @@ postvarsigma2=vsigma2bayes)
 ###########################################
 ## fonction TP4 => calcul des bayes factors
 ###########################################
-CalcBayesFactor=function(y,X,g=length(y))
+CalcBayesFactor=function(y,X,g=length(y),cr=FALSE)
 {
-n = dim(X)[1]
-p = dim(X)[2]
-q = 1
-#g = n
-
-#X0 = X[,-(7:8)]
-bfactor=rep(0,p)
-
-for(i in 1:p)
-{
-  X0 = X[,-i]
-  BF = (g+1)^(q/2) * 
-    ((t(y)%*%y - g/(g+1) * t(y)%*%X0 %*% solve(t(X0)%*%X0) %*% t(X0)%*%y)/
-    (t(y)%*%y - g/(g+1) * t(y)%*%X %*% solve(t(X)%*%X) %*% t(X)%*%y))^(n/2)
-  bfactor[i]=round(log10(BF),4)
-}
-
-bayesfactor<-cbind.data.frame(colnames(X),bfactor)
-bayesfactor<-bayesfactor[order(-bayesfactor$bfactor),]
+  n = dim(X)[1]
+  p = dim(X)[2]
+  q = 1
+  #g = n
+  
+  #X0 = X[,-(7:8)]
+  bfactor=rep(0,p)
+  
+  if(cr==TRUE) {
+    for (i in 1:p) {
+      X[,i]=X[,i]-mean(X[,i])
+      X[,i]=X[,i]/sqrt(mean(X[,i]^2))
+    }
+  }
+  
+  for(i in 1:p)
+  {
+    X0 = X[,-i]
+    BF = (g+1)^(q/2) * 
+      ((t(y)%*%y - g/(g+1) * t(y)%*%X0 %*% solve(t(X0)%*%X0) %*% t(X0)%*%y)/
+      (t(y)%*%y - g/(g+1) * t(y)%*%X %*% solve(t(X)%*%X) %*% t(X)%*%y))^(n/2)
+    bfactor[i]=round(log10(BF),4)
+  }
+  
+  bayesfactor<-cbind.data.frame(colnames(X),bfactor)
+  bayesfactor<-bayesfactor[order(-bayesfactor$bfactor),]
 return (bayesfactor)
 }
 
@@ -361,6 +371,7 @@ return (bayesfactor)
 ## fonction pour calculer la log-vraisemblance marginale
 marglkd = function(gamma, X, y, g=length(y)){
   q=sum(gamma)
+  n=length(y)
   X = cbind(1, X) # on ajoute une colonne de 1 pour beta_0
   X1=X[ ,c(T,gamma)]
   if(q==0){return( -n/2 * log(t(y)%*%y))}
@@ -369,7 +380,6 @@ marglkd = function(gamma, X, y, g=length(y)){
               solve(t(X1)%*%X1) %*%t(X1)%*%y)
 return(m)
 }
-
 ##############################################
 ## fonction TP4 => Gibbs Sampler cadre-Zellner
 ##############################################
@@ -407,7 +417,8 @@ Gibbs = function (y,X,g=length(y),niter = 1e4)
   
   gamma.res<-cbind.data.frame(X=colnames(X),gamma.mean=colMeans(gamma))
   gamma.res<-gamma.res[order(-gamma.res$gamma.mean),]
-  return (gamma)
+  res <-cbind.data.frame(modelnumber,gamma)
+  return (res)
 }
 ```
 
@@ -455,7 +466,7 @@ stan(model_code=blm, model_name="Linear Model", data=Data, ...)
 #### Livre : A First Course in Bayesian Statistical Methods - Peter Hoff
 ###  R-code to generate multiple independent Monte Carlo samples from the posterior distribution
 
-RegBayes.Hoff = function (y,X,g=length(y),nu0=1,s20=summary(lm(y~−1+X))$sigma^2, niter = 1e4) 
+RegBayes.Hoff = function (y,X,g=length(y),nu0=1,s20=summary(lm(y~−1+X))$sigma^2, niter = 1e4,cr=FALSE) 
 {
   nu0<−1  
   #s20 <− summary(lm(y~−1+X))$sigma^2 #8.54
@@ -465,10 +476,12 @@ RegBayes.Hoff = function (y,X,g=length(y),nu0=1,s20=summary(lm(y~−1+X))$sigma^
   X=as.matrix(X)
   n=length(y)
   p=dim(X)[2]
-  for (i in 1:p)
-  {
-  X[,i]=X[,i]-mean(X[,i])
-  X[,i]=X[,i]/sqrt(mean(X[,i]^2))
+
+  if(cr==TRUE) {
+    for (i in 1:p) {
+      X[,i]=X[,i]-mean(X[,i])
+      X[,i]=X[,i]/sqrt(mean(X[,i]^2))
+    }
   }
 
   ## data : y , X
@@ -509,8 +522,14 @@ lpy.X<−function (y ,X, g=length(y) ,nu0=1, s20=try(summary(lm(y~−1+X))$sigma
 
 #### Livre : A First Course in Bayesian Statistical Methods - Peter Hoff
 #### Gibbs sampler
-Gibbs.Hoff = function (y,X,g=length(y),niter = 1e4)
+Gibbs.Hoff = function (y,X,g=length(y),niter = 1e4,scale=FALSE)
 {
+  if(scale==TRUE) {
+    for (i in 1:p) {
+      X[,i]=X[,i]-mean(X[,i])
+      X[,i]=X[,i]/sqrt(mean(X[,i]^2))
+    }
+  }
   ##### starting values and MCMC setup
   z<−rep (1 ,dim(X)[2])
   lpy.c<−lpy.X(y ,X[,z==1,drop=FALSE])
@@ -586,17 +605,24 @@ density.plot=function(x,position="topleft",legende=FALSE,...)
 
 ## test des fonctions
 ```{r echo=FALSE}
+dataMutations_d <-read.table("mutations.csv", sep=",", dec=".",header=T, na.strings = "null")
+y <- dataMutations_d[, 6]
+X = as.matrix(dataMutations_d[, 7:23])
+
 BayesReg2(y,X,g=length(y))
 ModChoBayesReg2(y,X,g=length(y))
 
 bayesfactor = CalcBayesFactor(y,X,g=length(y))
 gamma.res = Gibbs(y,X,g=length(y),niter = 1e4)
 
+bayesfactor = CalcBayesFactor(y,X,g=length(y))
+gamma.res = Gibbs(y,X,g=length(y),niter = 1e4)
 
 beta.reg = RegBayes.Hoff(y,X,nu0=1,s20=summary(lm(y~−1+X))$sigma^2, niter = 1e4) 
 sumBeta<-summary(beta.reg)
 betaMean.reg<-colMeans(beta.reg)
-betaMean<-as.data.frame(betaMean)
+betaMean<-as.data.frame(betaMean.reg)
+betaMean
 
 test<-cbind(y,beta.reg)
 l<-lm(y~ .,data=as.data.frame(test))
@@ -667,14 +693,14 @@ head(data.mutations)
 
 df1<-data.frame(X=colnames(data.mutations)) 
 colDef<-data.frame(X=colnames(data.mutations),Index=as.numeric(rownames((df1))))
-colDef[,2]=df[,2]-1
+colDef[,2]=colDef[,2]-1
 ```
 
 
 * Corrélations 2 à 2 entre les variables
 
 ```{r echo=FALSE, fig.width=15}
-datamat=data.matrix(datam)
+datamat=data.matrix(data.mutations)
 mcor<-cor(datamat)
 corrplot(mcor, type="upper", order="hclust", tl.col="black", tl.srt=45)
 ```
@@ -843,6 +869,46 @@ donc : $\beta \mid y,X \sim Student_{k+1}(n,\frac{g}{g+1}\hat{\beta},\frac{g(s^2
 
 ## Résultats et interprétation des coéfficients
 
+### Calcul explicite des coefficients 
+
+* Hypothèses Zellner G-prior
+
+```{r}
+g=length(y)
+betatilde=rep(0,dim(X)[2])
+```
+
+
+* calcul de $\hat{\beta}$ coefficient du modèle linéaire
+
+$\hat{\beta}=(X^TX)^{-1}X^Ty$
+
+```{r}
+beta0.lm=mean(y)
+beta.lm=(solve(t(X)%*%X)%*%t(X))%*%(y)
+betahat=rbind(Intercept=beta0.lm,beta.lm)
+betahat
+```
+
+On pourrait aussi retrouver les coéfficients $\hat{\beta}$ à partir de la fonction lm.  
+On remarque cependant une différence assez significative entre les deux appproches, bien que l'odre de grandeur des coefficients est comparable. 
+```{r}
+reg.lm=lm(y~X)
+summary(reg.lm)
+```
+
+* Calcul de $E^{\pi}(\beta \mid y,X)=\frac{g}{g+1}(\hat{\beta}+\frac{\tilde{\beta}}{g})$
+G-prior informative de Zellner
+
+```{r}
+mbetabayes=g/(g+1)*(beta.lm+betatilde/g)
+postmean=rbind(Intercept=beta0.lm,mbetabayes)
+postmean
+```
+
+### Calcul de $\hat{\beta}$ 
+
+
 Pour estimer les $\beta$ à postériori, on va utiliser la fonction (modifiée) BayesReg du package Bayess issue du livre de Marin et Robert : Bayesian Essentials with R.
 On comparera le résultat obtenu avec le résultat renvoyé par la fonction du livre de P. Hoff: A First Course in Bayesian Statistical Methods.
  
@@ -862,13 +928,13 @@ Les Log10 bayes factors sont tous négatifs, aucunes des variables ne se dégage
 
 * Bayes Regression 2
 
-
 ```{r echo=FALSE}
 reg.f = lm(y~X)
 betahat = reg.f$coefficients
 residuals = reg.f$residuals
 s2 = t(residuals)%*%residuals
 #X = cbind(1, X) # on ajoute une colonne de 1 pour beta_0
+betahat
 ```
 
 ```{r echo=FALSE}
@@ -883,9 +949,6 @@ betaMean
 ```
 
 
-
-
-
 On trouve des résultats relativement proches avec la fonction zlm
 
 ```{r echo=FALSE}
@@ -898,7 +961,7 @@ summary(foo2)
 model <- stan_glm(Barre ~ ., family = gaussian(),prior = normal(),data=data.mutations)
 ```
 
-```{r echo=FALSE}
+```{r eval=FALSE, include=FALSE}
 summary(model)
 model$coefficients
 ```
@@ -923,15 +986,35 @@ Pour comparer les modèles on peut utiliser les facteurs de Bayes
 
 On test l'hypothèse $H_0$, $\forall i=1,...,17$ et on calcul le Bayes Factor à partir de la formule du cours (TP4) 
 
+* A partir de la fonction $CalcBayesFactor$ pour $g=n$
+
 ```{r echo=FALSE}
 bayesfactor = CalcBayesFactor(y,X,g=length(y))
 bayesfactor
 ```
 
 
+* A partir de la fonction $BayesReg2$ pour $g=n$
+
 ```{r echo=FALSE}
 BayesReg2(y,X,g=length(y))
 ```
+
+* A partir de la fonction $CalcBayesFactor$ pour $g=1$
+
+```{r echo=FALSE}
+bayesfactor = CalcBayesFactor(y,X,g=1)
+bayesfactor
+```
+
+* A partir de la fonction $BayesReg2$ pour $g=1$
+
+```{r echo=FALSE}
+BayesReg2(y,X,g=1)
+```
+
+* Conclusion 
+les 7ème (Suc.att_l),	12ème (Acc.brt_bac.2) et 14ème (Acc.brt_bac.1) variables sont les plus significatives.
 
 
 ```{r echo=FALSE}
@@ -946,11 +1029,12 @@ BayesReg2(y,X,g=length(y))
 
 * Choix de modèle : calcul exact
 
-A partir de la méthoide vue en TP
+A partir de la méthoide vue en TP, on va considérer les 4 variables les plus significatives
 
 ```{r echo=FALSE}
 # calculons la log-vraisemblance marginale des 8 modÃ¨les
 X_restreint = cbind(X[,"Suc.att_l"],X[,"Acc.brt_bac.2"],X[,"Acc.brt_bac.1"],X[,"Acc.att_bac.1"])
+#X_restreint = cbind(X[,"taux_reussite_attendu_serie_l"],X[,"taux_acces_attendu_premiere_bac"],X[,"taux_acces_brut_seconde_bac"],X[,"taux_brut_de_reussite_total_series"])
 #X[,1:4]
 logprob3 = c(
 marglkd(c(F,F,F), X_restreint, y),
@@ -961,13 +1045,13 @@ marglkd(c(T,F,F), X_restreint, y),
 marglkd(c(T,F,T), X_restreint, y),
 marglkd(c(T,T,F), X_restreint, y),
 marglkd(c(T,T,T), X_restreint, y))
-
 # on peut ajouter une constante, qui évitera les erreurs numéiques
 logprob3 = logprob3-max(logprob3)
 # les probabilités des modèles sont donc
 prob3 = exp(logprob3)/sum(exp(logprob3))
 round(prob3, 3)
 ```
+
 c'est le modèle ( T,F, F) qui est de loin le plus probable a posteriori
 le modèle avec la covariable: taux_reussite_attendu_serie_l (Suc.att_l)
 
@@ -981,12 +1065,14 @@ ModChoBayesReg2(y,X,g=length(y))
 
 Avec la fonction utilsée en TP
 
-```{r echo=FALSE}
-gamma = Gibbs(y,X,g=length(y),niter = 1e4)
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+res.Gibbs = Gibbs(y,X,g=length(y),niter = 1e4)
 ```
 [1] 0.1927 0.2517 0.5165 0.1815 0.2063 0.2628 0.4438 0.4137
 
 ```{r echo=FALSE}
+modelnumber = res.Gibbs[,1]
+gamma = res.Gibbs[,-1]
 gamma.res<-cbind.data.frame(X=colnames(X),gamma.mean=colMeans(gamma))
 gamma.res<-gamma.res[order(-gamma.res$gamma.mean),]
 gamma.res
@@ -1018,6 +1104,7 @@ library(zoo)
 
 nbCol = dim(X)[2]
 p<-nbCol
+niter=10000
 
 par(mfrow=c(4,4))
 for(i in 2:15) plot(rollapply(gamma[,i], width=50, FUN=mean), type="l")
@@ -1057,12 +1144,12 @@ g=length(y)
 ```
 
 ```{r echo=FALSE}
-X = cbind(1, X) # on ajoute une colonne de 1 pour beta_0
 if (det(t(X)%*%X)<=1e-7)
 stop("Design matrix has too low a rank!",call.=FALSE)
 
 Xnew = colMeans(X)
-#Xnew<-Xnew[-1]
+#WXnew<-Xnew[-1]
+betahat1=betahat[2:17]
 ynew.f = betahat%*%Xnew
 hist(rnorm(niter,ynew.f, sqrt(s2/(n-p))))
 
@@ -1080,6 +1167,51 @@ for(i in 1:niter){
 }
 
 hist(ynew.b)
+```
+
+
+```{r echo=FALSE}
+#X = cbind(1, X) # on ajoute une colonne de 1 pour beta_0
+#X = X[,-1]
+
+reg.f = lm(y~X)
+betahat = reg.f$coefficients
+
+
+predict=function(y,Xm,gamma,betahat)
+{
+gamma = as.matrix(gamma)
+n<−dim(X)[1] 
+p<−dim(X)[2]
+niter =10000
+
+if (det(t(X)%*%X)<=1e-7)
+stop("Design matrix has too low a rank!",call.=FALSE)
+Xm = cbind(1, X)
+Xnew = colMeans(Xm)
+#Xnew<-Xnew[-1]
+ynew.f = betahat%*%Xnew
+hist(rnorm(niter,ynew.f, sqrt(s2/(n-p))))
+
+ynew.b = rep(NA, niter)
+for(i in 1:niter){
+  X0 = X[, c(T, gamma[i,])]
+  p0 = sum(gamma[i,])
+  betahat0 = (lm(y~X0[,-1]))$coefficients
+  s20 = sum((lm(y~X0[,-1]))$residuals^2)/(n-p0)
+  sigma2=1/rgamma(1, n/2, s20/2 + .5/(g+1) * t(betahat0) %*% t(X0) %*% X0 %*% betahat0)
+  M=sigma2 *g/(g+1) * solve(t(X0)%*%X0)
+  beta = rmvnorm(1, g/(g+1) * betahat0, M)
+  #beta = rmvnorm(1, g/(g+1) * betahat0, sigma2 *g/(g+1) * solve(t(X0)%*%X0))
+  ynew.b[i] = beta %*% Xnew[c(T, gamma[i,])] + rnorm(1, 0, sqrt(sigma2))
+}
+hist(ynew.b)
+
+return(ynew.b)
+}
+X1 = cbind(1, X) # on ajoute une colonne de 1 pour beta_0
+ynew.b=predict(y,X1,gamma,betahat)
+as.matrix(gamma)
 ```
 
 
@@ -1218,8 +1350,267 @@ taux_brut_de_reussite_total_series
 ### Mutations en mathématiques
 
 ```{r echo=FALSE}
+d.math = as.data.frame(dataMutations_d[which(dataMutations_d$Matiere=="MATHS"),])
+row.names(d.math) <- NULL
+d.math<-d.math[,-c(1:6)]
+d.math = renameCol(d.math)
+X.math<-as.matrix(d.math)
+y.math<- d.math[, 6]
+
+d.en = as.data.frame(dataMutations_d[which(dataMutations_d$Matiere=="ANGLAIS"),])
+row.names(d.en) <- NULL
+d.en<-d.en[,-c(1:6)]
+d.en = renameCol(d.en)
+X.en<-as.matrix(d.en)
+y.en<- d.en[, 6]
 
 ```
+
+### Calcul explicite des coefficients 
+
+* G-prior informative de Zellner 
+Hypothèses Zellner G-prior
+calcul de $\hat{\beta}$ coefficient du modèle linéaire: $\hat{\beta}=(X^TX)^{-1}X^Ty$
+Calcul de $E^{\pi}(\beta \mid y,X)=\frac{g}{g+1}(\hat{\beta}+\frac{\tilde{\beta}}{g})$
+
+* Math
+
+```{r}
+y<-y.math
+X<-X.math
+   
+#♠X=scale(X)
+g=length(y)
+betatilde=rep(0,dim(X)[2])
+beta0.lm=mean(y)
+beta.lm=(solve(t(X)%*%X)%*%t(X))%*%(y)
+betahat=rbind(Intercept=beta0.lm,beta.lm)
+#betahat
+mbetabayes=g/(g+1)*(beta.lm+betatilde/g)
+postmean=rbind(Intercept=beta0.lm,mbetabayes)
+postmean
+```
+On pourrait aussi retrouver les coéfficients $\hat{\beta}$ à partir de la fonction lm.  
+On remarque cependant une différence assez significative entre les deux appproches, bien que l'odre de grandeur des coefficients est comparable. 
+```{r}
+reg.lm=lm(y~X)
+summary(reg.lm)
+```
+
+
+* Anglais
+
+```{r}
+y<-y.en
+X<-X.en
+   
+#♠X=scale(X)
+g=length(y)
+betatilde=rep(0,dim(X)[2])
+beta0.lm=mean(y)
+beta.lm=(solve(t(X)%*%X)%*%t(X))%*%(y)
+betahat=rbind(Intercept=beta0.lm,beta.lm)
+mbetabayes=g/(g+1)*(beta.lm+betatilde/g)
+postmean=rbind(Intercept=beta0.lm,mbetabayes)
+postmean
+```
+On pourrait aussi retrouver les coéfficients $\hat{\beta}$ à partir de la fonction lm.  
+On remarque cependant une différence assez significative entre les deux appproches, bien que l'odre de grandeur des coefficients est comparable. 
+```{r}
+reg.lm=lm(y~X)
+summary(reg.lm)
+```
+
+
+### Choix des covariables
+
+Bayes Factors et comparaison de modèles
+Pour comparer les modèles on peut utiliser les facteurs de Bayes
+
+* Test d'hypothèse $H_0: \beta_i=0  i$  
+
+On test l'hypothèse $H_0$, $\forall i=1,...,17$ et on calcul le Bayes Factor à partir de la formule du cours (TP4) 
+
+* A partir de la fonction $CalcBayesFactor$ pour $g=n$
+
+```{r echo=FALSE}
+y<-y.math
+X<-X.math
+                       
+bayesfactor = CalcBayesFactor(y,X,g=length(y))
+bayesfactor
+```
+
+
+* A partir de la fonction $BayesReg2$ pour $g=n$
+
+```{r echo=FALSE}
+BayesReg2(y,X,g=length(y))
+```
+
+* A partir de la fonction $CalcBayesFactor$ pour $g=1$
+
+```{r echo=FALSE}
+bayesfactor = CalcBayesFactor(y,X,g=1)
+bayesfactor
+```
+
+* A partir de la fonction $BayesReg2$ pour $g=1$
+
+```{r echo=FALSE}
+BayesReg2(y,X,g=1)
+```
+
+* Conclusion 
+les 7ème (Suc.att_l),	12ème (Acc.brt_bac.2) et 14ème (Acc.brt_bac.1) variables sont les plus significatives.
+
+
+```{r echo=FALSE}
+
+```
+
+```{r echo=FALSE}
+
+```
+
+
+
+* Choix de modèle : calcul exact
+
+A partir de la méthoide vue en TP, on va considérer les 4 variables les plus significatives
+
+```{r echo=FALSE}
+# calculons la log-vraisemblance marginale des 8 modÃ¨les
+X_restreint = cbind(X[,"Suc.att_l"],X[,"Acc.brt_bac.2"],X[,"Acc.brt_bac.1"],X[,"Acc.att_bac.1"])
+#X_restreint = cbind(X[,"taux_reussite_attendu_serie_l"],X[,"taux_acces_attendu_premiere_bac"],X[,"taux_acces_brut_seconde_bac"],X[,"taux_brut_de_reussite_total_series"])
+#X[,1:4]
+logprob3 = c(
+marglkd(c(F,F,F), X_restreint, y),
+marglkd(c(F,F,T), X_restreint, y),
+marglkd(c(F,T,F), X_restreint, y),
+marglkd(c(F,T,T), X_restreint, y),
+marglkd(c(T,F,F), X_restreint, y),
+marglkd(c(T,F,T), X_restreint, y),
+marglkd(c(T,T,F), X_restreint, y),
+marglkd(c(T,T,T), X_restreint, y))
+# on peut ajouter une constante, qui évitera les erreurs numéiques
+logprob3 = logprob3-max(logprob3)
+# les probabilités des modèles sont donc
+prob3 = exp(logprob3)/sum(exp(logprob3))
+round(prob3, 3)
+```
+
+c'est le modèle ( T,F, F) qui est de loin le plus probable a posteriori
+le modèle avec la covariable: taux_reussite_attendu_serie_l (Suc.att_l)
+
+A partir de la fonction (modifée) - ModChoBayesReg du package Bayess
+
+```{r echo=FALSE}
+ModChoBayesReg2(y,X,g=length(y))
+```
+
+* Choix de modèle par échantillonnage de Gibbs
+
+Avec la fonction utilsée en TP
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+res.Gibbs = Gibbs(y,X,g=length(y),niter = 1e4)
+```
+[1] 0.1927 0.2517 0.5165 0.1815 0.2063 0.2628 0.4438 0.4137
+
+```{r echo=FALSE}
+modelnumber = res.Gibbs[,1]
+gamma = res.Gibbs[,-1]
+gamma.res<-cbind.data.frame(X=colnames(X),gamma.mean=colMeans(gamma))
+gamma.res<-gamma.res[order(-gamma.res$gamma.mean),]
+gamma.res
+```
+
+On regarde la convergence de la méthode :
+
+```{r echo=FALSE, fig.height=12, fig.width=15}
+# Vérifions le mélange de la chaine de Markov à l'aide des autocorrélations.
+par(mfrow=c(6,3))
+for(i in 1:17) acf(as.numeric(gamma[,i]))
+# Autocorrélation décroit rapidement. Pas besoin de sous-échantillonner.
+
+```
+
+
+
+```{r echo=FALSE}
+
+
+```
+
+
+* Vérifions la convergence + le mélange à l'aide de la trace (on utilise une moyenne glissante puisque les valeurs sont binaires).
+
+```{r echo=FALSE, fig.width=15}
+
+library(zoo)
+
+nbCol = dim(X)[2]
+p<-nbCol
+niter=10000
+
+par(mfrow=c(4,4))
+for(i in 2:15) plot(rollapply(gamma[,i], width=50, FUN=mean), type="l")
+
+plot(rollapply(gamma[,16], width=50, FUN=mean), type="l")
+plot(rollapply(gamma[,17], width=50, FUN=mean), type="l")
+
+burnin = 500 # 500 itÃ©rations de burn-in
+gammab = modelnumber[(burnin+1):niter] 
+res = as.data.frame(table(gammab))
+odo = order(res$Freq, decreasing=T)[1:20]
+modcho = res$gammab[odo]
+probtop20 = res$Freq[odo]/(niter-burnin)
+
+indices = match(modcho, modelnumber)
+cbind(probtop20, gamma[indices, ])
+
+```
+
+
+
+
+### Comparaison au résultat obtenu par une analyse fréquentiste
+
+
+```{r echo=FALSE}
+reg.math = lm(y.math~X.math)
+summary(reg.math)
+```
+
+
+```{r echo=FALSE}
+reg.f1 = lm(Barre ~ . , data=data.mutations)
+summary(reg.f1)
+
+choix_modele=regsubsets(Barre ~ . ,int=T,nbest=1,nvmax=4,method="exhaustive",data=data.mutations)
+resume=summary(choix_modele)
+#print(resume)
+```
+```{r echo=FALSE, fig.height=5, fig.width=15}
+#quartz()
+par(mfrow=c(1,4))
+plot(choix_modele,scale="r2")
+plot(choix_modele,scale="adjr2")
+#par(mfrow=c(1,2))
+plot(choix_modele,scale="Cp")
+plot(choix_modele,scale="bic")
+```
+
+```{r include=FALSE}
+step_mod<-step(lm(Barre ~ .,data=data.mutations), Barre ~ ., direction="both")
+```
+
+```{r }
+summary(step_mod)
+```
+
+
 
 ### Mutations en anglais
 ```{r echo=FALSE}
