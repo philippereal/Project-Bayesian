@@ -6,17 +6,17 @@ date: '`r format(Sys.time(), " %d %B, %Y")`'
 abstract:
 keywords: "R"
 output:
-  html_document:
-    df_print: paged
-    toc: yes
-  word_document:
-    toc: yes
   pdf_document:
     toc: yes
     toc_depth: 3
     fig_caption: yes
     keep_tex: yes
     number_sections: true
+  word_document:
+    toc: yes
+  html_document:
+    df_print: paged
+    toc: yes
 ---
 
 ```{r install.librairies, eval=FALSE, include=FALSE}
@@ -49,7 +49,7 @@ install.packages("mvtnorm")
 ```
 
 
-```{r librairies, echo=FALSE, message=FALSE, warning=FALSE}
+```{r librairies, message=FALSE, warning=FALSE, include=FALSE}
 rm(list=ls())
 library(stats)
 library(tidyverse)
@@ -74,7 +74,7 @@ library(dplyr)
 ```
 
 
-```{r echo=FALSE}
+```{r include=FALSE}
 
 #########################################################################
 #### Estim Bayes-G Prior => fonction légèrement corrigé du package Bayess
@@ -180,7 +180,7 @@ postvarsigma2=vsigma2bayes)
 
 
 
-```{r echo=FALSE}
+```{r include=FALSE}
 
 #########################################################################
 #### Choix de Modèles => fonction légèrement corrigé du package Bayess
@@ -335,7 +335,7 @@ if (p<=18)
 
 
 
-```{r echo=FALSE}
+```{r include=FALSE}
 ###########################################
 ## fonction TP4 => calcul des bayes factors
 ###########################################
@@ -434,7 +434,7 @@ Gibbs = function (y,X,g=length(y),niter = 1e4,cr=FALSE)
 }
 ```
 
-```{r echo=FALSE}
+```{r eval=FALSE, include=FALSE}
 data("caterpillar")
 y.cat=log(caterpillar$y)
 X.cat=as.matrix(caterpillar[,1:8])
@@ -444,19 +444,7 @@ BayesReg(y.cat, X.cat)
 
 ```
 
-
-* ModChoBayesReg
-
 ```{r eval=FALSE, include=FALSE}
-ModChoBayesReg2(y.cat,X.cat)
-```
-
-```{r eval=FALSE, include=FALSE}
-ModChoBayesReg(y.cat,X.cat)
-```
-
-
-```{r echo=FALSE}
 nbest = 15
 
 X<-X.cat
@@ -576,7 +564,7 @@ head(res)
 head(reso)
 ```
 
-```{r echo=FALSE}
+```{r include=FALSE}
 blm <- "
 data {
 int<lower=0> n; // number cases
@@ -660,7 +648,7 @@ RegBayes.Hoff = function (y,X,g=length(y),nu0=1,s20=summary(lm(y~−1+X))$sigma^
 ```
 
 
-```{r echo=FALSE}
+```{r include=FALSE}
 #### Livre : A First Course in Bayesian Statistical Methods - Peter Hoff
 ##### a function to compute the marginal probability
 lpy.X<−function (y ,X, g=length(y) ,nu0=1, s20=try(summary(lm(y~−1+X))$sigma^2 ,silent=TRUE) )
@@ -754,7 +742,7 @@ Gibbs.Hoff2 = function (y,X,g=length(y), niter = 1e4, cr=FALSE)
 }
 ```
 
-```{r librairies, echo=FALSE, message=FALSE, warning=FALSE}
+```{r message=FALSE, warning=FALSE, include=FALSE}
 renameCol<-function(data)
 {
  data <- data %>% rename(Prs_l =  effectif_presents_serie_l,)   
@@ -798,14 +786,14 @@ density.plot=function(x,position="topleft",legende=FALSE,...)
 ```
 
 
-## test des fonctions
-```{r echo=FALSE}
+```{r eval=FALSE, include=FALSE}
+#test functions
 dataMutations_d <-read.table("mutations.csv", sep=",", dec=".",header=T, na.strings = "null")
 y <- dataMutations_d[, 6]
 X = as.matrix(dataMutations_d[, 7:23])
 
 BayesReg2(y,X,g=length(y))
-ModChoBayesReg2(y,X,g=length(y))
+ModChoBayesReg2(y,X,g=length(y),cr=TRUE)
 
 bayesfactor = CalcBayesFactor(y,X,g=length(y))
 gamma.res = Gibbs(y,X,g=length(y),niter = 1e4)
@@ -830,14 +818,6 @@ colmean(Z)
   n<−dim(beta.reg)[1] 
 
 ```
-
-```{r echo=FALSE}
-betaMean
-bayesfactor
-gamma.res
-
-```
-
 
 
 \pagebreak
@@ -919,17 +899,6 @@ Effectifs présents: Prs_l/Prs_es/Prs_s
 Succés brute: Suc.brt_l/Suc.brt_es/Suc.brt_s on garderait aussi Suc.att_l
 Accès brute: Acc.brt_bac.2/Acc.brt_bac.1
 
-15 
-13			
-16			
-8				
-9				
-17			
-7 15		
-12			
-14			
-6
-
 15	taux_acces_attendu_premiere_bac	0.3369		
 13	taux_acces_attendu_seconde_bac	0.1957		
 7	taux_reussite_attendu_serie_l	0.1224		
@@ -940,33 +909,6 @@ Accès brute: Acc.brt_bac.2/Acc.brt_bac.1
 12	taux_acces_brut_seconde_bac	0.0898		
 5	taux_brut_de_reussite_serie_es	0.0821		
 6	taux_brut_de_reussite_serie_s	0.0776	
-
-
-Prs_l	        1			
-Prs_es	      2			
-Prs_s	        3			
-Suc.brt_l	    4 			
-Suc.brt_es	  5
-Eff_2nd	      10			
-Eff_1er	      11
-
-Suc.brt_s	    6	 *
-Suc.att_l	    7	 *
-Suc.att_es	  8	 *	
-Suc.att_s	    9	 *
-Acc.brt_bac.2	12 *			
-Acc.att_bac.2	13 *			
-Acc.brt_bac.1	14 *			
-Acc.att_bac.1	15 *			
-Suc.brt_Tot	16	 *		
-Suc.att_Tot	17	 *
-
-			
-Acc.att_bac.1	15 
-Acc.brt_bac.2	12			
-Acc.att_bac.2	13			
-Acc.brt_bac.1	14
-Suc.att_Tot	  17	 
 
 ```{r echo=FALSE}
 datam2<-dataMut[,-c(1:5)]
@@ -1000,11 +942,11 @@ $y_i = \beta_0+\beta_1x_{i1}+...+\beta_px_{ip} + \epsilon_i$ où $\epsilon_i \si
 
 On note $y=(y_1,..,y_n)$ le vecteur des observations et $X= (x_{ik})_{1\leq i \leq n,1\leq k \leq p}$ la matrice des covaraiables ou de design (predictor).
 
-La réponse pour l'individus $y_i$ est donnée par (variable Barre dans notre exemple).
+La réponse pour l'individus y_i est donnée par (variable Barre dans notre exemple).
 
 En notation matricielles le modèle se réécrit de la manière suivante: 
 
-$y \mid \alpha,\beta, \sigma^2 \sim N_n(\alpha \mathbb{1_n} + X\beta,\sigma^2 I_n) $
+$$y \mid \alpha,\beta, \sigma^2 \sim N_n{\alpha 1_n} + X\beta,\sigma^2 I_n)$$
 où $N_n$ est la distribution de la loi normale en dimension n.
 
 Ainsi les  $y_i$  suivent des lois normales indépendantes avec :
@@ -1027,12 +969,9 @@ Sont choix est important, et on doit la choisir demanière à obtenir : une loi 
 
 * Loi à postériori $\pi(\theta,y)$
 
-On appelle la loi à postériori de $\theta$ sachant $y_1,y_2,...,y_n$ la loi de distribution
-$\pi(\theta\mid Y) \propto \pi(\theta)L(\theta \mid Y)$
+On appelle la loi à postériori de $\theta$ sachant $y_1,y_2,...,y_n$ la loi de distribution $\pi(\theta\mid Y) \propto \pi(\theta)L(\theta \mid Y)$
 
-Cette définition découle de la formule de Bayes:
-
-$\pi(\theta \mid y)  = \frac{\pi(\theta) f_{Y\mid \theta}(y\mid \theta)}{f_Y(y)}$ 
+Cette définition découle de la formule de Bayes: $\pi(\theta \mid y)  = \frac{\pi(\theta) f_{Y\mid \theta}(y\mid \theta)}{f_Y(y)}$ 
 
 On retrouve l'équivalence des écritures avec $f_{Y\mid \theta}(y\mid \theta) = L(\theta \mid Y)$
 Et ${f_Y(y)}$ ne dépend pas du paramètre $\theta$, c'est une constante de normalisation qui est unique et que l'on peut retrouver une fois la loi à postériori déterminer analytiquement, qui doit s'intégrer à 1.  
@@ -1042,12 +981,12 @@ Et ${f_Y(y)}$ ne dépend pas du paramètre $\theta$, c'est une constante de norm
 On reprend les hypothèses et le contexte de définition du modèle linéaire gaussien, que l'on réinterprète avec l'approche Bayésienne. 
 On considère la loi à priori $\pi(\theta)$ définit à partir des deux lois suivantes :
 
-$\beta \mid \sigma^2,X \sim N_{k+1}(\tilde{\beta},\sigma^2M^{-1}) $
+$$\beta \mid \sigma^2,X \sim N_{k+1} (\tilde{\beta},\sigma^2M^{-1})$$
 $\sigma^2 \mid X \sim IG(a,b)$
 
 En fixant la matrice M de la manière suivante, on obtient la g-prior ou loi informative de Zellner :
-$\beta \mid \sigma^2,X \sim N_{k+1}(\tilde{\beta},g\sigma^2(^tXX)^{-1}) $
-$\sigma^2 \sim \pi(\sigma^2 \mid X) \propto \sigma^{-2}$
+$$\beta \mid \sigma^2,X \sim N_{k+1}(\tilde{\beta},g\sigma^2(^tXX)^{-1})$$
+$$\sigma^2 \sim \pi(\sigma^2 \mid X) \propto \sigma^{-2}$$
 
 Il reste à choisir le paramètre g, souvent g=1 ou g=n en fonction du poids que l'on veut accorder à la prior.
 Si g=2 celà revient à donner à la prior le même poids que 50% de l'échantilon.
@@ -1056,13 +995,13 @@ Avec g=n on donne à la loi à priori le même poids que 1-observation.
 Pour l'espérance à priori $\tilde{\beta}$ ou pourra la prendre = 0 si l'on n'a pas d'information à priori.
 
 La loi à priori $\pi(\theta)$ se déduit simplement à partir des deux lois précédentes:
- $\pi(\theta) = \pi(\beta,\sigma^2 \mid X) = \pi(\beta \mid \sigma^2,X)\pi(\sigma^2 \mid X)$ 
+ $$\pi(\theta) = \pi (\beta,\sigma^2 \mid X) = \pi(\beta \mid \sigma^2,X) \pi( \sigma^2 \mid X)$$ 
 
 Cette loi à la propriété remarquable d'être une loi conjugué et sa loi à postériori associée a l'expression analytique suivnate:
-$\beta \mid \sigma^2,y,X \sim N_{k+1}(\frac{g}{g+1}\hat{\beta},\frac{\sigma^2g}{g+1}(^tXX)^{-1}) $
-$\sigma^2 \mid y,X \sim IG(\frac{n}{2} \hat{\beta}, \frac{s^2}{2} + \frac{1}{2(g+1)}(^t\hat{\beta} {^tX}X\hat{\beta})$
+$$\beta \mid \sigma^2, y, X \sim N_{k+1}(\frac{g}{g+1}\hat{\beta},\frac{\sigma^2g}{g+1}(^tXX)^{-1})$$
+$$\sigma^2 \mid y,X \sim IG(\frac{n}{2} \hat{\beta}, \frac{s^2}{2} + \frac{1}{2(g+1)}(^t\hat{\beta} {^tX}X\hat{\beta})$$
 
-donc : $\beta \mid y,X \sim Student_{k+1}(n,\frac{g}{g+1}\hat{\beta},\frac{g(s^2 + (^t\hat{\beta} {^tX}X\hat{\beta})/(g+1) )}{n(g+1)} (^tXX)^{-1}) $
+donc : $$\beta \mid y,X \sim Student_{k+1}(n,\frac{g}{g+1}\hat{\beta},\frac{g(s^2 + (^t\hat{\beta} {^tX}X\hat{\beta})/(g+1) )}{n(g+1)} (^tXX)^{-1})$$
 
 ## Résultats et interprétation des coéfficients
 
@@ -1072,7 +1011,6 @@ y <- dataMutations_d[, 6]
 X = as.matrix(dataMutations_d[, 7:23])
 
 data.mutations<-dataMutations_d[, 6:23]
-
 ```
 
 ### Calcul explicite des coefficients 
@@ -1163,7 +1101,7 @@ summary(foo2)
 ```
 
 
-```{r include=FALSE}
+```{r eval=FALSE, include=FALSE}
 model <- stan_glm(Barre ~ ., family = gaussian(),prior = normal(),data=data.mutations)
 ```
 
@@ -1264,15 +1202,15 @@ le modèle avec la covariable: taux_reussite_attendu_serie_l (Suc.att_l)
 
 A partir de la fonction (modifée) - ModChoBayesReg du package Bayess
 
-```{r echo=FALSE}
-ModChoBayesReg2(y,X,g=length(y))
+```{r mod_1, echo=FALSE}
+ModChoBayesReg2(y,X,g=length(y),cr=TRUE)
 ```
 
 * Choix de modèle par échantillonnage de Gibbs
 
 Avec la fonction utilsée en TP
 
-```{r echo=FALSE, message=FALSE, warning=FALSE}
+```{r gibbs1, echo=FALSE, message=FALSE, warning=FALSE}
 res.Gibbs = Gibbs(y,X,g=length(y),niter = 1e4)
 ```
 [1] 0.1927 0.2517 0.5165 0.1815 0.2063 0.2628 0.4438 0.4137
@@ -1305,7 +1243,7 @@ for(i in 1:17) acf(as.numeric(gamma[,i]))
 
 * Vérifions la convergence + le mélange à l'aide de la trace (on utilise une moyenne glissante puisque les valeurs sont binaires).
 
-```{r echo=FALSE, fig.width=15}
+```{r eval=FALSE, fig.width=15, include=FALSE}
 
 library(zoo)
 
@@ -1334,7 +1272,7 @@ colMeans(res.conv)
 
 * Prédiction
 
-```{r echo=FALSE}
+```{r eval=FALSE, include=FALSE}
 # Prédiction
 reg.f = lm(y~X)
 #summary(reg.f)
@@ -1351,10 +1289,7 @@ colnames(X)[1]="Intercept"
 g=length(y)
 ```
 
-```{r echo=FALSE}
-if (det(t(X)%*%X)<=1e-7)
-stop("Design matrix has too low a rank!",call.=FALSE)
-
+```{r eval=FALSE, include=FALSE}
 Xnew = colMeans(X)
 #WXnew<-Xnew[-1]
 betahat1=betahat[2:17]
@@ -1378,7 +1313,7 @@ hist(ynew.b)
 ```
 
 
-```{r echo=FALSE}
+```{r eval=FALSE, include=FALSE}
 #X = cbind(1, X) # on ajoute une colonne de 1 pour beta_0
 #X = X[,-1]
 
@@ -1423,25 +1358,21 @@ as.matrix(gamma)
 ```
 
 
-```{r echo=FALSE}
+```{r eval=FALSE, include=FALSE}
 Z= Gibbs.Hoff(y,X,g=length(y),niter = 1e4)
 colmean(Z)
 ```
-
-
 
 ### Comparaison au résultat obtenu par une analyse fréquentiste
 
 * Analyse fréquentiste
 
-On considère un modéle de régression linéaire gaussien, cad 
-
-$y \mid \alpha,\beta, \sigma^2 \sim N_n(\alpha \mathbb{1_n} + X\beta,\sigma^2 I_n) $
+On considère un modéle de régression linéaire gaussiennne i.e  $$y \mid \alpha,\beta, \sigma^2 \sim N_n(\alpha 1_n + X\beta,\sigma^2 I_n) $$
 où $N_n$ est la distribution de la loi normale en dimension n.
 
 Ainsi les  $y_i$  suivent des lois normales indépendantes avec :
-$E(y_i \mid \alpha,\beta, \sigma^2 ) = \alpha + \sum_{j=1}^p \beta_jx_{ij}$
-$V(y_i \mid \alpha,\beta, \sigma^2) = \sigma^2$
+$$E(y_i \mid \alpha,\beta, \sigma^2 ) = \alpha + \sum_{j=1}^p \beta_jx_{ij}$$
+$$V(y_i \mid \alpha,\beta, \sigma^2) = \sigma^2$$
 
 
 ```{r echo=FALSE}
@@ -1452,8 +1383,8 @@ choix_modele=regsubsets(Barre ~ . ,int=T,nbest=1,nvmax=4,method="exhaustive",dat
 resume=summary(choix_modele)
 #print(resume)
 ```
+
 ```{r echo=FALSE, fig.height=5, fig.width=15}
-#quartz()
 par(mfrow=c(1,4))
 plot(choix_modele,scale="r2")
 plot(choix_modele,scale="adjr2")
@@ -1470,7 +1401,7 @@ step_mod<-step(lm(Barre ~ .,data=data.mutations), Barre ~ ., direction="both")
 summary(step_mod)
 ```
 
-Les 3 covariables qui se dégagent  :
+Les 3 covariables qui se dégagent :
 
 - taux_reussite_attendu_serie_l   
 - taux_acces_attendu_premiere_bac
@@ -1516,30 +1447,25 @@ On conserve le plus petit modèle : step_mod
 
 Un estimateur sans biais de $\sigma^2$ est donnée par la formule suivante:
 
-$ \hat{\sigma}^2 = \frac{1}{n-p-1}(y - \hat{\alpha}\mathbb{1_n} - X\hat{\beta})^T(y-\hat{\alpha}\mathbb{1_n} - X\hat{\beta}) = \frac{s^2}{n-p-1}$
+$$ \hat{\sigma}^2 = \frac{1}{n-p-1}(y - \hat{\alpha}\mathbb{1_n} - X\hat{\beta})^T(y-\hat{\alpha}\mathbb{1_n} - X\hat{\beta}) = \frac{s^2}{n-p-1}$$
 
 on obtient $\sigma^2$ 
 
 
 ```{r echo=FALSE}
+n<−dim(X)[1] 
+p<−dim(X)[2]
 betahat = step_mod$coefficients
 residuals = step_mod$residuals
 s2 = t(residuals)%*%residuals
-#summary(reg.f)
-```
-
-
-```{r echo=FALSE}
-
 sigma2 = s2/(n-p-1)
 sigma2
-
 ```
 
 et les estimations par les moindres carrés des coéfficients de régression :
 
 ```{r echo=FALSE}
-summary(reg.f)
+summary(step_mod)
 ```
 effectif_presents_serie_l           
 effectif_presents_serie_es
@@ -1591,7 +1517,7 @@ Calcul de $E^{\pi}(\beta \mid y,X)=\frac{g}{g+1}(\hat{\beta}+\frac{\tilde{\beta}
 y<-y.math
 X<-X.math
    
-#♠X=scale(X)
+#X=scale(X)
 g=length(y)
 betatilde=rep(0,dim(X)[2])
 beta0.lm=mean(y)
@@ -1615,7 +1541,7 @@ summary(reg.lm)
 y<-y.en
 X<-X.en
    
-#♠X=scale(X)
+#X=scale(X)
 g=length(y)
 betatilde=rep(0,dim(X)[2])
 beta0.lm=mean(y)
@@ -1679,7 +1605,7 @@ On utilse la fonctionModChoBayesReg du package Bayess
 
 * Mutations en Math
 
-```{r echo=FALSE}
+```{r Math_mod, echo=FALSE}
 y<-y.math
 X<-X.math
 
@@ -1691,7 +1617,7 @@ La 6ème covariable est omniprésente dans tous les modèles. La probabilité à
 
 * Mutations en Anglais
 
-```{r echo=FALSE}
+```{r En_mod, echo=FALSE}
 y<-y.en
 X<-X.en
 
@@ -1779,7 +1705,6 @@ Pour les mutations en Math et en Anglais, on a plus de difficulté à sélection
 Et confirme 
 
 
-
 # Loi de Pareto
 
 On ignore maintenant les covariables, et on s'intéresse uniquement à la loi du nombre de points nécessaire (colonne Barre). 
@@ -1803,7 +1728,7 @@ $f(z\mid \alpha,m) = \alpha \frac{ m^\alpha}{z^{\alpha+1}}\mathbb{1_{[{m,+\infty
 ```
 
 
-```{r GPD, echo=FALSE, fig.height=4, fig.width=15}
+```{r GPD1, echo=FALSE, fig.height=4, fig.width=15}
 par(mfrow=c(1,2))
 x <- seq(0,10, by =0.05)
 plot(x, devd(x, 1, 1, -0.5, 1, type="GP"), type="l", col="blue", lwd=1.5,ylab="GP df", main="Global Pareto distibutions - GPD")
@@ -1825,7 +1750,7 @@ text(0.5,0.1,expression(a == 2))
 
 
 
-```{r GPD, echo=FALSE, fig.height=4, fig.width=15}
+```{r GPD2, echo=FALSE, fig.height=4, fig.width=15}
 par(mfrow=c(1,2))
 x <- seq(0,10, by =0.05)
 plot(x, devd(x, 1,  1, 0.5, 1, type="GP"), type="l", col="blue", lwd=1.5,ylab="GP df", main="Global Pareto distibutions - GPD - pour différents alpha")
@@ -1846,17 +1771,18 @@ text(0.5,0.1,expression(a == 2))
 
 ## Choix d'une loi à priori pour $\alpha$
 
-- Loi de paréto : $f(z\mid \alpha,m) = \alpha \frac{ m^\alpha}{z^{\alpha+1}}\mathbb{1_{[{m,+\infty}[}}$ 
+- Loi de paréto : $$f(z\mid \alpha,m) = \alpha \frac{ m^\alpha}{z^{\alpha+1}}\mathbb{1_{[{m,+\infty}[}}$$ 
 
-$f(z\mid \alpha,m) \propto \alpha e^{\alpha log(m/z)}$
-
-$\sim$
+$$f(z\mid \alpha,m) \propto \alpha e^{\alpha log(m/z)}$$
 
 A une constante multiplicative près et après transformation en log, on reconnaît une loi exponentielle de paramètre $\alpha$ 
 On peut prendre une loi a priori de type $gamma$ de manière à avoir une loi conjuguée.
 
 
 ```{r echo=FALSE}
+#Nsim=10^4
+#gamma n,r
+#y=rgamma(Nsim,n,rate=)
 
 ```
 
@@ -1931,62 +1857,9 @@ BayesReg2(y.cat, X.cat,cr=TRUE)
 * ModChoBayesReg
 
 ```{r eval=FALSE, include=FALSE}
-ModChoBayesReg2(y.cat,X.cat)
+ModChoBayesReg2(y.cat,X.cat,cr=TRUE)
 ```
 
 ```{r eval=FALSE, include=FALSE}
 ModChoBayesReg(y.cat,X.cat)
 ```
-
-
-$ f_Y(y) = \frac{\pi(\theta) f_{Y\mid \theta}}{\pi(\theta \mid y)}$ 
-
-La loi jointe $P_{\theta}$ des paramètres $(\beta,\sigma^2)$ a pour distribution le produit des distribution :  
-$f(\theta \mid y) = f(\beta,\sigma^2 \mid y) =\pi(\beta\mid y,\sigma^2)\pi(\sigma^2\mid y)$
-
-Dans le cas du modèle de la régression linéaire : $\theta = (\beta_1, \beta_2,..,\beta_k,\sigma^2) = (\beta,\sigma^2)$
-
-
-* On considére que le paramétre $\theta = (\beta ,\sigma^2)$ a pour prior une loi à priori non informative, prior de Jeffrey: $\pi(\theta) = \pi(\beta,\sigma^2) \propto \frac{1}{\sigma^2}$
-
-* Loi à postériori $\pi(\theta,y)$
-
-La loi jointe $P_{\theta}$ des paramètres $(\beta,\sigma^2)$ a pour distribution le produit des distribution :  
-$\pi(\theta \mid y) = \pi(\beta,\sigma^2 \mid y) =\pi(\beta\mid y,\sigma^2)\pi(\sigma^2\mid y)$
-
-La distribution à postériori du vecteur de régression $\beta$ conditionnellement à la variance (de l'erreur) $\sigma^2$ : 
-
-
-$\mathbf{E}(y_i \mid \beta,X)= \sum_{k=1}^p \beta_kx_{ik}$, i=1,...,n
-Où les varaiables $x_{i1},x_{i2},...x_{ik})$ désignent les prédictor du i-ème individus et les $\beta_1, \beta_2,..,\beta_k$ sont les paramètres de regression inconnus (regressor).
-
-En notant $x_i=(x_{i1},x_{i2},...x_{ik})$ le vecteur ligne des predictors pour le i-ème individus $x_i$ et $\beta=(\beta_1, \beta_2,..,\beta_k)$ le vecteur colonne des coefficients de la régression (regressor) on obtient comme  expression de la moyenne: $\mathbf{E}(y_i \mid \beta,X)=x_i\beta$
-
-Les observations (input) $(y_i)$ sont supposées conditionnellement indépendant des regressor (paramètres) et des predictor (varaiables de prédiction).
-
-On suppose aussi l'hypothèse classique de la regression linéaire ordinaire sur la variance, qui est supposée constante: $V(y_i \mid \theta, X) = \sigma^2$
-
-On note aussi $\theta = (\beta_1, \beta_2,..,\beta_k,\sigma^2) = (\beta,\sigma^2)$ le vecteur de paramètres, qui est l'inconnu de notre problème.
-
-La dernière hypothèse porte sur les erreurs qui sont iid et suivent une gaussienne centrèe de varaiance $\sigma^2$.
-
-Repris du cours et de [REF B2 - Bayesian computation with R - Jim Albert ]
-
-## Régression linéaire bayésienne et interprétation des coéfficients obtenus
-
-Inférence bayésienne à l'aide de la loi a priori g de Zellner
-
-On considère la loi à priori suivante :
-
-$\beta \mid \sigma^2,X \sim N_{k+1}(0,g\sigma^2(^tXX)^{-1}) $
-$\pi(\sigma^2) \propto \sigma^{-2}$
-
-C'est une loi conjugué qui a pour loi à postériori assiciée :
-$\beta \mid \sigma^2,X \sim N_{k+1}(\frac{g}{g+1}\hat{\beta},\frac{\sigma^2g}{g+1}(^tXX)^{-1}) $
-$\sigma^2 \mid y,X \sim IG(\frac{n}{2} \hat{\beta}, \frac{s^2}{2} + \frac{1}{2(g+1)}(^t\hat{\beta} {^tX}X\hat{\beta})$
-
-donc 
-
-$\beta \mid y,X \sim I_{k+1}(n,\frac{g}{g+1}\hat{\beta},\frac{g(s^2 + (^t\hat{\beta} {^tX}X\hat{\beta})/(g+1) )}{n(g+1)} (^tXX)^{-1}) $
-
-
