@@ -136,7 +136,7 @@ text(0.5,0.1,expression(a == 2))
 
 ```{r echo=FALSE}
 y<-y.tot
-X<-X.tot
+
 summary(y.tot)
 ```
 
@@ -158,6 +158,18 @@ fit.exp
 ```
 
 On peut prendre pour loi à priori la loi $\Gamma(a,b)$ de manière à avoir une loi conjuguée.
+
+
+Nous allons tester une loi a priori avec un paramètre shape = 2 et scale = 2.
+
+
+```{r }
+logprior = function(alpha){
+return(dgamma(alpha, 2, 2, log = T))
+}
+
+```
+
 
 ```{r }
 gam.prior<-dgamma(3, 2)
@@ -182,7 +194,6 @@ EMV_alpha
 ```
 
 
-
 ```{r eval=FALSE, include=FALSE}
 # Simulons quatre Ã©chantillons
 a=2
@@ -204,10 +215,99 @@ curve(dbeta(x, 1 + sum(y4), 1 + 10000 - sum(y4)))
 
 La loi à postériori correspondante est la loi : $\Gamma(a+n,b+\sum_{i=1}^n ln(\frac{Z_i}{m}))$
 
+
+
+```{r }
+logposterior <- function(alpha, y){
+m<-21
+n<-length(y)
+loglkd <- n*log(alpha) + alpha*n*log(m)-(alpha+1)*sum(log(y))
+if(!is.finite(loglkd)) return(-Inf)
+return(loglkd + logprior(alpha))
+}
+```
+
+
+
 ## Echantillon de la loi à postériori de $\alpha$
 
 Par la méthode de votre choix, tirer un échantillon de la loi a posteriori de $\alpha$.
 Donner un intervalle de crédibilité à 95%.
+
+```{r }
+
+MH <- function(Y,alpha0, niter){
+alpha <- matrix(NA, nrow=niter, ncol=1)
+alpha[1] <- alpha0
+for(i in 2:niter){
+proposal <- rgamma(1, 2, 2)
+logalpha <- logposterior(proposal, Y)- logposterior(alpha[i-1,], Y)
+if(log(runif(1)) < logalpha){
+alpha[i] <- proposal
+}
+else{
+alpha[i] <- alpha[i-1]
+}
+}
+return(alpha)
+}
+niter <- 1e5
+b1 <- MH(y.tot, .1, niter)
+```
+
+
+
+```{r }
+niter = 2e3
+b1 = MH(c(-3,0), niter, 1)
+b2 = MH(c(2,0), niter, 1)
+b3 = MH(c(2,-0.3), niter, 1)
+b4 = MH(c(0, 0), niter, .1)
+b5 = MH(c(0, -.01), niter, 1)
+
+```
+
+```{r fig.height=4, fig.width=7}
+# Ã©tudions la sortie de l'algorithme
+par(mfcol=c(3,1))
+i = 1 # Changer en i=2 pour l'autre paramÃ¨tre
+# trace
+plot(b1[, i], type="l")
+#plot(b2[, i], type="l")
+#plot(b3[, i], type="l")
+
+# autocorrÃ©lations
+acf(b1[100:niter, i])
+#acf(b2[100:niter, i])
+#acf(b3[100:niter, i])
+
+# histogrammes
+hist(b1[100:niter, i], breaks=50)
+#hist(b2[100:niter, i], breaks=50)
+#hist(b3[100:niter, i], breaks=50)
+
+```
+
+
+Intervalle de confiance à 95% peut aussi être obtenu à partir des path Monte Carlo:
+
+```{r echo=FALSE}
+quantile(b1 , c(.025,.975))
+
+```
+
+
+
+```{r }
+# Effective Sample Size
+niter/(2*sum(acf(b1[100:niter, 1], plot=F)$acf) - 1)
+```
+
+```{r }
+
+```
+
+
 
 
 ```{r }
@@ -281,6 +381,43 @@ y.en<- d.en[, 6]
 
 ```{r echo=FALSE}
 
+alpha.math <- MH(y.math, .1, niter)
+alpha.en <- MH(y.en, .1, niter)
+```
+
+
+```{r fig.height=4, fig.width=7}
+# Ã©tudions la sortie de l'algorithme
+par(mfcol=c(3,1))
+i = 1 # Changer en i=2 pour l'autre paramÃ¨tre
+# trace
+plot(alpha.math[, i], type="l")
+plot(alpha.en[, i], type="l")
+#plot(b2[, i], type="l")
+#plot(b3[, i], type="l")
+
+# autocorrÃ©lations
+acf(alpha.math[100:niter, i])
+acf(alpha.en[100:niter, i])
+#acf(b2[100:niter, i])
+#acf(b3[100:niter, i])
+
+# histogrammes
+hist(alpha.math[100:niter, i], breaks=50)
+hist(alpha.en[100:niter, i], breaks=50)
+#hist(b2[100:niter, i], breaks=50)
+#hist(b3[100:niter, i], breaks=50)
+
+```
+
+```{r echo=FALSE}
+quantile(alpha.math , c(.025,.975))
+quantile(alpha.en , c(.025,.975))
+```
+
+
+```{r echo=FALSE}
+
 
 ```
 
@@ -288,7 +425,7 @@ y.en<- d.en[, 6]
 ```{r echo=FALSE}
 
 y_math_exp<-log(y.math/m)
-y_en_exp<-log(y.math/m)
+y_en_exp<-log(y.en/m)
 a<−2
 b<−1
 
