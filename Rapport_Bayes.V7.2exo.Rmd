@@ -1,0 +1,327 @@
+---
+title: "Rapport - Statistique bayésienne"
+btitle: ""
+author: "Philippe Real"
+date: '`r format(Sys.time(), " %d %B, %Y")`'
+abstract:
+keywords: "R"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: 3
+    fig_caption: yes
+    keep_tex: yes
+    number_sections: true
+  word_document:
+    toc: yes
+  html_document:
+    df_print: paged
+    toc: yes
+    
+---
+
+```{r install.librairies, eval=FALSE, include=FALSE}
+# install.packages("evd")
+# install.packages("evir")
+# install.packages("ismev")
+# install.packages("fExtremes")
+# install.packages("extRemes")
+# install.packages("fitdistrplus")
+# install.packages("chron")
+# install.packages("lubridate")
+# library(forecast)
+# install.packages("fGarch")
+# install.packages("caschrono")
+# install.packages("FinTS")
+# install.packages("xts")
+# install.packages("zoo")
+# install.packages("tidyverse")
+# install.packages("dplyr")
+# install.packages("extRemes")
+
+install.packages("rstanarm")
+install.packages("bayesreg")
+install.packages("bayess")
+install.packages("dae")
+install.packages("BAS")
+install.packages("BMS")
+install.packages("corrplot")
+install.packages("mvtnorm")
+```
+
+
+```{r librairies, message=FALSE, warning=FALSE, include=FALSE}
+rm(list=ls())
+library(stats)
+library(tidyverse)
+library(tibble)
+library(rstanarm)
+library(bayesreg)
+library(bayess)
+library(leaps)
+library(MASS)
+library(extRemes)
+library(dae)
+library(BAS)
+library(BMS)
+library(corrplot)
+library(mvtnorm)
+library(dplyr)
+library(fitdistrplus)
+
+#library(evd)
+#library(evir)
+#library(ismev)
+#library(fExtremes)
+#library(dyplr)
+```
+
+```{r echo=FALSE, fig.height=5, fig.width=15, message=FALSE, warning=FALSE}
+dataMutations_d <-read.table("mutations.csv", sep=",", dec=".",header=T, na.strings = "null")
+#dataMutations_d<- mutate(dataMutations_d, dept = as.factor( substr(as.character(commune),1,2)))
+
+```
+
+```{r echo=FALSE}
+y.tot <- dataMutations_d[, 6]
+X.tot = as.matrix(dataMutations_d[, 7:23])
+
+y<-y.tot
+X<-X.tot
+```
+
+
+# Loi de Pareto
+
+On ignore maintenant les covariables, et on s'intéresse uniquement à la loi du nombre de points nécessaire (colonne Barre). 
+La loi gaussienne peut paraître peu pertinente pour ces données : on va plutôt proposer une loi de Pareto. 
+Pour $m > 0$ et $\alpha > 0$, on dit que $Z  Pareto(m; \alpha)$ si $Z$ est à valeurs dans $[m;+1[$ de densité:
+
+$f(z\mid \alpha,m) = \alpha \frac{ m^\alpha}{z^{\alpha+1}}\mathbb{1_{[{m,+\infty}[}}$ 
+
+```{r echo=FALSE}
+
+```
+
+## Package R pour générer des réalisation d'une loi de Paréto
+
+```{r echo=FALSE}
+
+```
+
+On peut utiliser le package $extRemes$ et la fonction $devd$  
+
+```{r GPD2, echo=FALSE, fig.height=4, fig.width=15}
+par(mfrow=c(1,2))
+x <- seq(0,10, by =0.05)
+plot(x, devd(x, 1,  1, 0.5, 1, type="GP"), type="l", col="blue", lwd=1.5,ylab="GP df", main="Global Pareto distibutions - pour différents alpha")
+lines(x, devd(x, 1, 1, 2, 1, type="GP"), col="lightblue", lwd=1.5)
+lines(x, devd(x, 1, 1, 5, 1, type="GP"), col="darkblue", lwd=1.5)
+
+
+legend("topright", legend=c("Pareto alpha=0.5", "Pareto alpha=2", "Pareto alpha=5"),col=c("blue", "lightblue", "darkblue"), bty="n", lty=1, lwd=1.5)
+
+plot(x, devd(x, 1, 0.5, 0.5, 1, type="GP"), type="l", col="blue", lwd=1.5,ylab="GP df", main="Différents paramètres de dimensionnement")
+lines(x, devd(x, 1, 1, 0.5, 1, type="GP"), col="lightblue", lwd=1.5)
+lines(x, devd(x, 1, 2, 0.5, 1, type="GP"), col="darkblue", lwd=1.5)
+legend("topright", legend=c("Pareto a=0.5", "Pareto a=1", "Pareto a=2"),col=c("blue", "lightblue", "darkblue"), bty="n", lty=1, lwd=1.5)
+text(2,1.6,expression(a == 0.5))
+text(0.5,1,expression(a == 1))
+text(0.5,0.1,expression(a == 2))
+```
+
+## Choix d'une loi à priori pour $\alpha$
+
+- Loi de paréto : $$f(z\mid \alpha,m) = \alpha \frac{ m^\alpha}{z^{\alpha+1}}\mathbb{1_{[{m,+\infty}[}}$$ 
+
+```{r echo=FALSE}
+y<-y.tot
+X<-X.tot
+summary(y.tot)
+```
+
+Au vu des données on prend : m=21
+
+A une constante multiplicative près et après transformation en log, on reconnaît une loi exponentielle de paramètre $\alpha$.
+
+$$f(z\mid \alpha,m) \propto \alpha e^{\alpha log(m/z)}$$
+
+En applicant la transformation : $z \rightarrow ln(\frac{z}{m})$ a notre échantillon $(Z_i)$, on a que  $ln(\frac{Z}{m}) \sim Exp(\alpha)$ 
+
+On peut alors estimer le paramètre $\alpha$ par mle à partir de la fonction R: $fitdist$ du package $fitdistrplus$.
+
+```{r message=FALSE, warning=FALSE}
+m=21
+y.exp<-log(y.tot/m)
+fit.exp <- fitdist(y.exp, "exp", method="mle")
+fit.exp
+```
+
+On peut prendre pour loi à priori la loi $\Gamma(a,b)$ de manière à avoir une loi conjuguée.
+
+```{r }
+gam.prior<-dgamma(3, 2)
+curve(dgamma(x, 2, 2), xlim=c(0, 4), main="Prior", ylab="density")
+
+```
+
+
+* EMV de $alpha$
+
+Llog = nlog alpha + alpha n log m-(alpha+1)Somme des Xi
+EMV(alpha) = n/( Somme (log (Zi) + nlog m)
+
+
+```{r }
+m = 21
+n=length(y.tot)
+
+EMV_alpha = n/(sum(log(y.tot)) + n*log(m))   
+EMV_alpha
+
+```
+
+
+
+```{r eval=FALSE, include=FALSE}
+# Simulons quatre Ã©chantillons
+a=2
+b = 4.5
+y1 = rgamma(20, a, b)
+y2 = rgamma(100, a, b)
+y3 = rgamma(1000, a, b)
+y4 = rgamma(1e4, a, b)
+
+par(mfrow = c(3, 2))
+curve(dbeta(x, 1, 1))
+curve(dbeta(x, 1 + sum(y1), 1 + 20 - sum(y1)))
+curve(dbeta(x, 1 + sum(y2), 1 + 100 - sum(y2)))
+curve(dbeta(x, 1 + sum(y3), 1 + 1000 - sum(y3)))
+curve(dbeta(x, 1 + sum(y4), 1 + 10000 - sum(y4)))
+```
+
+## Loi à postériori de $\alpha$
+
+La loi à postériori correspondante est la loi : $\Gamma(a+n,b+\sum_{i=1}^n ln(\frac{Z_i}{m}))$
+
+## Echantillon de la loi à postériori de $\alpha$
+
+Par la méthode de votre choix, tirer un échantillon de la loi a posteriori de $\alpha$.
+Donner un intervalle de crédibilité à 95%.
+
+
+```{r }
+y.exp=log(y.tot/m)
+a=2
+b=1
+sy=sum(y.exp)
+n=length(y.tot)
+alpha_mc10=rgamma(10,a+sy,b+n)
+alpha_mc100=rgamma(100,a+sy,b+n)
+alpha_mc1000=rgamma(1000,a+sy,b+n)
+
+```
+
+
+```{r }
+mean(alpha_mc10)
+mean(alpha_mc100)
+mean(alpha_mc1000)
+```
+
+```{r }
+mean(alpha_mc10<2.3)
+mean(alpha_mc100<2.3)
+mean(alpha_mc1000<2.3)
+
+pgamma(2.3,a+sy,b+n)
+```
+
+Quantiles: A 95% a partir de qgamma
+
+```{r echo=FALSE}
+qgamma(c(.025,.975),a+sy,b+n) 
+```
+
+Intervalle de confiance à 95% peut aussi être obtenu à partir des path Monte Carlo:
+
+```{r echo=FALSE}
+quantile(alpha_mc10 , c(.025,.975))
+quantile(alpha_mc100 , c(.025,.975))
+quantile(alpha_mc1000 , c(.025,.975))
+```
+
+
+```{r echo=FALSE}
+
+
+```
+
+
+```{r echo=FALSE}
+
+
+```
+
+
+## On se concentre uniquement sur les mutations en mathématiques et en anglais. Répéter l'analyse pour chacune de ces deux catégories. Que penser de l'hypotèse d'égalité des $alpha$
+
+
+```{r echo=FALSE}
+d.math = as.data.frame(dataMutations_d[which(dataMutations_d$Matiere=="MATHS"),])
+row.names(d.math) <- NULL
+y.math<- d.math[, 6]
+
+
+d.en = as.data.frame(dataMutations_d[which(dataMutations_d$Matiere=="ANGLAIS"),])
+row.names(d.en) <- NULL
+y.en<- d.en[, 6]
+
+```
+
+```{r echo=FALSE}
+
+
+```
+
+
+```{r echo=FALSE}
+
+y_math_exp<-log(y.math/m)
+y_en_exp<-log(y.math/m)
+a<−2
+b<−1
+
+sy1<−sum(y_math_exp)
+n1=length(y_math_exp)
+
+sy2<−sum(y_en_exp)
+n2=length(y_en_exp)
+
+alpha1_mc<−rgamma(10000,a+sy1,b+n1)
+alpha2_mc<−rgamma(10000,a+sy2,b+n2)
+mean(alpha1_mc>alpha2_mc)
+
+
+```
+
+
+
+```{r eval=FALSE, include=FALSE}
+
+a<−1 
+b<−1
+alpha.prior.mc<−rbeta (10000 , a , b)
+gamma.prior.mc<− log( alpha.prior.mc/(1−alpha.prior.mc) )
+n0<−860−441 
+n1<−441
+alpha.post.mc<−rbeta (10000 , a+n1 , b+n0 )
+gamma.post.mc<− log(alpha.post.mc/(1−alpha.post.mc) )
+
+mean(alpha.post.mc)
+```
+
+
+
+
+
