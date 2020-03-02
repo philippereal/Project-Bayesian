@@ -158,23 +158,21 @@ fit.exp
 ```
 
 On peut prendre pour loi à priori la loi $\Gamma(a,b)$ de manière à avoir une loi conjuguée.
-
-
 Nous allons tester une loi a priori avec un paramètre shape = 2 et scale = 2.
 
-
 ```{r }
-logprior = function(alpha){
-return(dgamma(alpha, 2, 2, log = T))
-}
+prior = function(alpha){
+return(dgamma(alpha, 2, 2))}
 
+logprior = function(alpha){
+return(dgamma(alpha, 2, 2, log = T))}
 ```
 
 
-```{r }
-gam.prior<-dgamma(3, 2)
+```{r fig.height=4, fig.width=12}
+par(mfrow = c(1, 2))
 curve(dgamma(x, 2, 2), xlim=c(0, 4), main="Prior", ylab="density")
-
+curve(dgamma(x, 2, 2, log = T), xlim=c(0, 4), main="log-Prior", ylab="density")
 ```
 
 
@@ -194,7 +192,7 @@ EMV_alpha
 ```
 
 
-```{r eval=FALSE, include=FALSE}
+```{r echo=FALSE}
 # Simulons quatre Ã©chantillons
 a=2
 b = 4.5
@@ -215,18 +213,14 @@ curve(dbeta(x, 1 + sum(y4), 1 + 10000 - sum(y4)))
 
 La loi à postériori correspondante est la loi : $\Gamma(a+n,b+\sum_{i=1}^n ln(\frac{Z_i}{m}))$
 
-
-
 ```{r }
-logposterior <- function(alpha, y){
-m<-21
+logposterior <- function(m,alpha,y){
 n<-length(y)
 loglkd <- n*log(alpha) + alpha*n*log(m)-(alpha+1)*sum(log(y))
 if(!is.finite(loglkd)) return(-Inf)
-return(loglkd + logprior(alpha))
+return(loglkd+logprior(alpha))
 }
 ```
-
 
 
 ## Echantillon de la loi à postériori de $\alpha$
@@ -235,13 +229,13 @@ Par la méthode de votre choix, tirer un échantillon de la loi a posteriori de 
 Donner un intervalle de crédibilité à 95%.
 
 ```{r }
-
+m<-21
 MH <- function(Y,alpha0, niter){
 alpha <- matrix(NA, nrow=niter, ncol=1)
 alpha[1] <- alpha0
 for(i in 2:niter){
 proposal <- rgamma(1, 2, 2)
-logalpha <- logposterior(proposal, Y)- logposterior(alpha[i-1,], Y)
+logalpha <- logposterior(m, proposal, Y)- logposterior(m, alpha[i-1,], Y)
 if(log(runif(1)) < logalpha){
 alpha[i] <- proposal
 }
@@ -267,9 +261,9 @@ b5 = MH(c(0, -.01), niter, 1)
 
 ```
 
-```{r fig.height=4, fig.width=7}
+```{r fig.height=4, fig.width=12}
 # Ã©tudions la sortie de l'algorithme
-par(mfcol=c(3,1))
+par(mfcol=c(1,3))
 i = 1 # Changer en i=2 pour l'autre paramÃ¨tre
 # trace
 plot(b1[, i], type="l")
@@ -386,9 +380,9 @@ alpha.en <- MH(y.en, .1, niter)
 ```
 
 
-```{r fig.height=4, fig.width=7}
+```{r fig.height=5, fig.width=12}
 # Ã©tudions la sortie de l'algorithme
-par(mfcol=c(3,1))
+par(mfcol=c(2,3))
 i = 1 # Changer en i=2 pour l'autre paramÃ¨tre
 # trace
 plot(alpha.math[, i], type="l")
