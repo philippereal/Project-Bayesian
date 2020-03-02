@@ -451,11 +451,13 @@ nbest = 15
 
 X<-X.cat
 y<-y.cat
+y<-y.tot
+X<-X.tot
 
 g=length(y)
 betatilde=rep(0,dim(X)[2])
 niter=100000
-cr=FALSE
+cr=TRUE
 prt=TRUE
 
 X=as.matrix(X)
@@ -545,7 +547,7 @@ head(reso)
   
 for (i in 1:nbest)
 {
-  modtop10[i]=paste(which(intToBits(as.integer(paste(modcho[i]))-1)==1),collapse=" ")
+  modtopNbest[i]=paste(which(intToBits(as.integer(paste(modcho[i]))-1)==1),collapse=" ")
 }
 if (prt==TRUE)
 {
@@ -555,17 +557,19 @@ if (prt==TRUE)
   cat("Model posterior probabilities are estimated by using an MCMC algorithm")
   cat("\n")
   cat("\n")
-  print(data.frame(Top10Models=modtop10,PostProb=round(probtop10,4)))
+  print(data.frame(Top10Models=modtopNbest,PostProb=round(probtopNbest,4)))
   cat("\n")
   cat("\n")
 }
 
-list(top10models=modtop10,postprobtop10=probtop10)
+list(topNbestmodels=modtopNbest,postprobtopNbest=probtopNbest)
 
 head(res)
 head(reso)
 ```
-
+$top10models
+ [1] "1 2 7"     "1 7"       "1 2 3 7"   "1 3 7"     "1 2 6"     "1 2 3 5 7" "1 2 5 7"   "1 6"       "1 2 4 7"   "7" 
+ 
 ```{r include=FALSE}
 blm <- "
 data {
@@ -877,7 +881,7 @@ colDef[,2]=colDef[,2]-1
 
 * Corrélations 2 à 2 entre les variables
 
-```{r echo=FALSE, fig.height=10, fig.width=15}
+```{r echo=FALSE, fig.height=8, fig.width=12}
 
 datamat=data.matrix(data.mutations)
 mcor<-cor(datamat)
@@ -1027,7 +1031,6 @@ g=length(y)
 betatilde=rep(0,dim(X)[2])
 ```
 
-
 * calcul de $\hat{\beta}$ coefficient du modèle linéaire
 
 $\hat{\beta}=(X^TX)^{-1}X^Ty$
@@ -1061,9 +1064,10 @@ postmean
 ### Calcul de $\hat{\beta}$ 
 
 Pour estimer les $\beta$ à postériori, on va utiliser la fonction (modifiée) BayesReg du package Bayess issue du livre de Marin et Robert : Bayesian Essentials with R.
+Le calcul détaillé a été exposé au § précédent. Comme on l'a vu ce calcul peut aussi être obtenu directement à partir de la fonction lm (residuals). 
 On comparera le résultat obtenu avec le résultat renvoyé par la fonction du livre de P. Hoff: A First Course in Bayesian Statistical Methods.
  
-* Bayes Regression 1 : $Fonction BayesReg$ 
+* Bayes Regression : $Fonction BayesReg$ 
 
 ```{r echo=FALSE}
 #X<-as.matrix(data.mutations[,-1])
@@ -1073,7 +1077,7 @@ On comparera le résultat obtenu avec le résultat renvoyé par la fonction du l
 BayesReg2(y,X,g=length(y))
 ```
 
-Les Log10 bayes factors sont tous négatifs, aucunes des variables ne se dégage.
+Les Log10 bayes factors sont tous négatifs, aucunes des variables ne se dégage véritablement.
 
 ### Autres méthodes et packages
 
@@ -1197,6 +1201,10 @@ Par contre le classement à partir de cette valeur rest valable.
 ModChoBayesReg2(y,X,g=length(y),cr=TRUE)
 ```
 
+ [1] ""      "3"     "7 8"   "3 8"   "1 3"   "3 4"   "3 5"   "6"     "6 8"   "5 7"   "4"     "3 7"   "7"     "2 7 8" "2 3" 
+ 
+  [1] "15"    "13"    "8"     "16"    "9"     "17"    "12"    "7 15"  "6"     "14"    ""      "5"     "15 17" "7 13"  "6 15" 
+  
 * Choix de modèle par échantillonnage de Gibbs
 
 Avec la fonction utilsée en TP
@@ -1213,7 +1221,8 @@ gamma.res<-cbind.data.frame(X=colnames(X),gamma.mean=colMeans(gamma))
 gamma.res<-gamma.res[order(-gamma.res$gamma.mean),]
 gamma.res
 ```
-
+ [1] "15"    "13"    "8"     "16"    "9"     "17"    "12"    "7 15"  "6"     "14"    ""      "5"     "15 17" "7 13"  "6 15" 
+ 
 On regarde la convergence de la méthode :
 
 ```{r echo=FALSE, fig.height=12, fig.width=15}
@@ -1908,7 +1917,12 @@ BayesReg2(y.cat, X.cat,cr=TRUE)
 
 * ModChoBayesReg
 
-```{r eval=FALSE, include=FALSE}
+
+```{r echo=TRUE}
+ModChoBayesReg(y.cat,X.cat)
+```
+
+```{r echo=TRUE}
 ModChoBayesReg2(y.cat,X.cat,cr=TRUE)
 ```
 
