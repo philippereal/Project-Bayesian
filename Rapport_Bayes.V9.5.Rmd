@@ -1539,7 +1539,7 @@ MH <- function(Y,alpha0, m, niter){
 ```
 
 
-```{r }
+```{r cache = TRUE}
 alpha.MH <- MH(Y=y.tot, alpha0=0.1, m=21, niter=1e6)
 ```
 
@@ -1555,7 +1555,7 @@ acf(alpha.MH[100:niter, 1])
 hist(alpha.MH[100:niter, 1], breaks=50)
 ```
 
-Intervalle de confiance à 95% :
+Intervalle de confiance à 95% et estimation de $\hat{\alpha}$ :
 
 ```{r echo=FALSE}
 colMeans(alpha.MH)
@@ -1568,15 +1568,15 @@ quantile(alpha.MH , c(.025,.975))
 
 ### Calcul du $alpha$ par l'alogorithme de Métropolis-Hastigs
 
-```{r }
-niter <- 1e6
+```{r cache = TRUE}
+niter <- 1e5
 alpha.math <- MH(y.math, .1, 21, niter)
 alpha.en <- MH(y.en, .1, 21, niter)
 ```
 
 ### Convergence de l'algorithme de Metropolois-Hastings: mutations en mathématiques
 
-```{r fig.height=4, fig.width=12}
+```{r echo=FALSE, fig.height=4, fig.width=12}
 # Etudions la sortie de l'algorithme
 par(mfcol=c(1,3))
 # trace
@@ -1587,9 +1587,16 @@ acf(alpha.math[100:niter, 1])
 hist(alpha.math[100:niter, 1], breaks=50)
 ```
 
+Intervalle de confiance à 95% et estimation de $\hat{\alpha}_{math}$ :
+```{r echo=FALSE}
+colMeans(alpha.math)
+quantile(alpha.math , c(.025,.975))
+```
+
+
 ### Convergence de l'algorithme de Metropolois-Hastings: mutations en anglais
 
-```{r fig.height=4, fig.width=12}
+```{r echo=FALSE, fig.height=4, fig.width=12}
 # Etudions la sortie de l'algorithme
 par(mfcol=c(1,3))
 # trace
@@ -1599,37 +1606,29 @@ acf(alpha.en[100:niter, 1])
 # histogrammes
 hist(alpha.en[100:niter,1], breaks=50)
 ```
-
-Intervalle de confiance à 95% math et anglais
-
-```{r }
-quantile(alpha.math , c(.025,.975))
+Intervalle de confiance à 95% et estimation de $\hat{\alpha}_{anglais}$ :
+```{r echo=FALSE}
+colMeans(alpha.en)
 quantile(alpha.en , c(.025,.975))
 ```
-
 On va tester l'hypothèse $\alpha_{math}=\alpha_{anglais}$. Pour celà on va estimer l'espérance à postériori du quotient $r_{\alpha}=\frac{\alpha_{math}}{\alpha_{anglais}}$. On utilise les approximations obtenues par Métropolis-Hastings précédemment pour chacun des $\alpha$.
-
-On regarde la convergence de l'estimateur, qu id'après les graphiques est obtenue à partir de 10000 path. 
-
+On regarde la convergence de l'estimateur, qui d'après les graphiques est obtenue à partir de 10000 path. 
 ```{r echo=FALSE, fig.height=5, fig.width=15}
 r = alpha.math / alpha.en
-
 par(mfrow=c(1, 2))
 hist(r)
 # Convergence de notre estimateur
 plot(1:niter, cumsum(r)/(1:niter), type="l",main="Convergence de l'estimateur")
 ```
 
-
 ```{r echo=FALSE, fig.height=5, fig.width=15}
 r.final = r[-20000]
-
 mean(r.final)
 sd(r.final)
 quantile(r.final, c(0.025, 0.975))
 ```
 
-A la vue des résultats on peut conclure à l'égalité des paramètre $\alpha$ pour les mutations en math et en anglais.
+A la vue des résultats on peut conclure à l'égalité des paramètres $\alpha$ pour les mutations en math et en anglais.
 
 \pagebreak
 
@@ -1741,7 +1740,5 @@ effectif_presents_serie_es
 taux_reussite_attendu_serie_l      
 taux_brut_de_reussite_total_series 
 
- Nouveau Nom  |             Ancien Nom
---------------|-------------------------------------
-Prs_l         | effectif_presents_serie_l 
+
 
